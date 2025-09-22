@@ -1,0 +1,27 @@
+# Core dependencies
+websockets
+httpx
+celery
+psycopg2-binary
+asyncpg
+sqlalchemy
+
+# Data processing
+pandas
+numpy
+TA-Lib
+
+# Configuration and utilities
+pydantic
+pydantic-settings
+python-dotenv
+loguru
+
+# Optional signal sinks
+python-telegram-bot
+
+# Development
+pytest
+pytest-asyncio
+black
+ruff

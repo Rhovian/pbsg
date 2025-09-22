@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_DB: pbsg
+      POSTGRES_USER: pbsg
+      POSTGRES_PASSWORD: pbsg_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  adminer:
+    image: adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+volumes:
+  timescale_data:
