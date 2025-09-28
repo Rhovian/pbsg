@@ -1,6 +1,7 @@
 """
 Unit tests for KrakenOHLCHandler
 """
+
 import pytest
 import json
 from unittest.mock import AsyncMock, patch, call
@@ -32,7 +33,7 @@ class TestKrakenOHLCHandler:
             "trades": 150,
             "volume": "1234.56789",
             "interval_begin": "2024-01-01T12:00:00Z",
-            "interval": 15
+            "interval": 15,
         }
 
     def test_initialization(self, handler):
@@ -88,7 +89,7 @@ class TestKrakenOHLCHandler:
         # Setup existing subscription
         handler.subscriptions["ohlc_15"] = {
             "symbols": ["BTC/USD", "ETH/USD", "SOL/USD"],
-            "snapshot": True
+            "snapshot": True,
         }
 
         await handler.unsubscribe(["BTC/USD", "ETH/USD"])
@@ -111,10 +112,7 @@ class TestKrakenOHLCHandler:
         handler.websocket = AsyncMock()
         handler.is_connected = True
 
-        handler.subscriptions["ohlc_15"] = {
-            "symbols": ["BTC/USD"],
-            "snapshot": True
-        }
+        handler.subscriptions["ohlc_15"] = {"symbols": ["BTC/USD"], "snapshot": True}
 
         await handler.unsubscribe(["BTC/USD"])
 
@@ -123,17 +121,19 @@ class TestKrakenOHLCHandler:
     @pytest.mark.asyncio
     async def test_parse_subscription_success(self, handler):
         """Test parsing successful subscription response"""
-        message = json.dumps({
-            "method": "subscribe",
-            "success": True,
-            "result": {
-                "channel": "ohlc",
-                "interval": 15,
-                "snapshot": True,
-                "symbol": ["BTC/USD"]
-            },
-            "req_id": 1
-        })
+        message = json.dumps(
+            {
+                "method": "subscribe",
+                "success": True,
+                "result": {
+                    "channel": "ohlc",
+                    "interval": 15,
+                    "snapshot": True,
+                    "symbol": ["BTC/USD"],
+                },
+                "req_id": 1,
+            }
+        )
 
         result = await handler.parse_message(message)
 
@@ -146,12 +146,14 @@ class TestKrakenOHLCHandler:
     @pytest.mark.asyncio
     async def test_parse_subscription_error(self, handler):
         """Test parsing subscription error"""
-        message = json.dumps({
-            "method": "subscribe",
-            "success": False,
-            "error": "Invalid symbol",
-            "req_id": 1
-        })
+        message = json.dumps(
+            {
+                "method": "subscribe",
+                "success": False,
+                "error": "Invalid symbol",
+                "req_id": 1,
+            }
+        )
 
         result = await handler.parse_message(message)
 
@@ -164,11 +166,9 @@ class TestKrakenOHLCHandler:
     @pytest.mark.asyncio
     async def test_parse_ohlc_snapshot(self, handler, sample_ohlc_candle):
         """Test parsing OHLC snapshot data"""
-        message = json.dumps({
-            "channel": "ohlc",
-            "type": "snapshot",
-            "data": [sample_ohlc_candle]
-        })
+        message = json.dumps(
+            {"channel": "ohlc", "type": "snapshot", "data": [sample_ohlc_candle]}
+        )
 
         result = await handler.parse_message(message)
 
@@ -192,11 +192,9 @@ class TestKrakenOHLCHandler:
     @pytest.mark.asyncio
     async def test_parse_ohlc_update(self, handler, sample_ohlc_candle):
         """Test parsing OHLC update data"""
-        message = json.dumps({
-            "channel": "ohlc",
-            "type": "update",
-            "data": [sample_ohlc_candle]
-        })
+        message = json.dumps(
+            {"channel": "ohlc", "type": "update", "data": [sample_ohlc_candle]}
+        )
 
         result = await handler.parse_message(message)
 
@@ -213,11 +211,9 @@ class TestKrakenOHLCHandler:
         candle2["symbol"] = "ETH/USD"
         candle2["open"] = "3000.00"
 
-        message = json.dumps({
-            "channel": "ohlc",
-            "type": "update",
-            "data": [sample_ohlc_candle, candle2]
-        })
+        message = json.dumps(
+            {"channel": "ohlc", "type": "update", "data": [sample_ohlc_candle, candle2]}
+        )
 
         result = await handler.parse_message(message)
 
@@ -231,25 +227,27 @@ class TestKrakenOHLCHandler:
     @pytest.mark.asyncio
     async def test_parse_invalid_candle(self, handler):
         """Test handling invalid candle data"""
-        message = json.dumps({
-            "channel": "ohlc",
-            "type": "update",
-            "data": [
-                {"invalid": "data"},  # Invalid candle
-                {  # Valid candle
-                    "symbol": "BTC/USD",
-                    "open": "50000.00",
-                    "high": "51000.00",
-                    "low": "49500.00",
-                    "close": "50500.00",
-                    "vwap": "50250.00",
-                    "trades": 150,
-                    "volume": "1234.56789",
-                    "interval_begin": "2024-01-01T12:00:00Z",
-                    "interval": 15
-                }
-            ]
-        })
+        message = json.dumps(
+            {
+                "channel": "ohlc",
+                "type": "update",
+                "data": [
+                    {"invalid": "data"},  # Invalid candle
+                    {  # Valid candle
+                        "symbol": "BTC/USD",
+                        "open": "50000.00",
+                        "high": "51000.00",
+                        "low": "49500.00",
+                        "close": "50500.00",
+                        "vwap": "50250.00",
+                        "trades": 150,
+                        "volume": "1234.56789",
+                        "interval_begin": "2024-01-01T12:00:00Z",
+                        "interval": 15,
+                    },
+                ],
+            }
+        )
 
         result = await handler.parse_message(message)
 
@@ -260,9 +258,7 @@ class TestKrakenOHLCHandler:
     @pytest.mark.asyncio
     async def test_parse_error_message(self, handler):
         """Test parsing error messages"""
-        message = json.dumps({
-            "error": "Rate limit exceeded"
-        })
+        message = json.dumps({"error": "Rate limit exceeded"})
 
         result = await handler.parse_message(message)
 
@@ -274,9 +270,7 @@ class TestKrakenOHLCHandler:
     @pytest.mark.asyncio
     async def test_parse_heartbeat(self, handler):
         """Test parsing heartbeat messages"""
-        message = json.dumps({
-            "channel": "heartbeat"
-        })
+        message = json.dumps({"channel": "heartbeat"})
 
         result = await handler.parse_message(message)
         assert result is None  # Heartbeats return None
@@ -284,10 +278,7 @@ class TestKrakenOHLCHandler:
     @pytest.mark.asyncio
     async def test_parse_unhandled_message(self, handler):
         """Test parsing unhandled message types"""
-        message = json.dumps({
-            "channel": "unknown",
-            "data": "some data"
-        })
+        message = json.dumps({"channel": "unknown", "data": "some data"})
 
         result = await handler.parse_message(message)
         assert result is None
@@ -303,10 +294,9 @@ class TestKrakenOHLCHandler:
     @pytest.mark.asyncio
     async def test_parse_exception_handling(self, handler):
         """Test exception handling in parse_message"""
-        message = json.dumps({
-            "channel": "ohlc",
-            "data": None  # Will cause exception when iterating
-        })
+        message = json.dumps(
+            {"channel": "ohlc", "data": None}  # Will cause exception when iterating
+        )
 
         result = await handler.parse_message(message)
         # Should handle exception and return valid message
@@ -321,10 +311,7 @@ class TestKrakenOHLCHandler:
         handler.is_connected = True
 
         handler.subscriptions = {
-            "ohlc_15": {
-                "symbols": ["BTC/USD", "ETH/USD"],
-                "snapshot": False
-            }
+            "ohlc_15": {"symbols": ["BTC/USD", "ETH/USD"], "snapshot": False}
         }
 
         await handler._resubscribe()
@@ -357,10 +344,7 @@ class TestKrakenOHLCHandler:
     @pytest.mark.asyncio
     async def test_parse_ohlc_with_missing_type(self, handler, sample_ohlc_candle):
         """Test parsing OHLC data without explicit type field"""
-        message = json.dumps({
-            "channel": "ohlc",
-            "data": [sample_ohlc_candle]
-        })
+        message = json.dumps({"channel": "ohlc", "data": [sample_ohlc_candle]})
 
         result = await handler.parse_message(message)
 
@@ -369,20 +353,21 @@ class TestKrakenOHLCHandler:
         assert result.channel == "ohlc"
         assert len(result.data) == 1
 
-    @pytest.mark.parametrize("method,success,expected_type", [
-        ("subscribe", True, "subscribe"),
-        ("subscribe", False, "error"),
-        ("unsubscribe", True, "unsubscribe"),
-        ("unsubscribe", False, "error"),
-    ])
+    @pytest.mark.parametrize(
+        "method,success,expected_type",
+        [
+            ("subscribe", True, "subscribe"),
+            ("subscribe", False, "error"),
+            ("unsubscribe", True, "unsubscribe"),
+            ("unsubscribe", False, "error"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_parse_method_responses(self, handler, method, success, expected_type):
+    async def test_parse_method_responses(
+        self, handler, method, success, expected_type
+    ):
         """Test parsing various method responses"""
-        message_data = {
-            "method": method,
-            "success": success,
-            "req_id": 1
-        }
+        message_data = {"method": method, "success": success, "req_id": 1}
 
         if success:
             message_data["result"] = {"channel": "ohlc"}

@@ -2,9 +2,12 @@ from pydantic_settings import BaseSettings
 from pydantic import Field
 from typing import Optional
 
+
 class Settings(BaseSettings):
     # Database
-    database_url: str = Field(default="postgresql://pbsg:pbsg_password@localhost:5432/pbsg")
+    database_url: str = Field(
+        default="postgresql://pbsg:pbsg_password@localhost:5432/pbsg"
+    )
 
     # Kraken
     kraken_ws_url: str = Field(default="wss://ws.kraken.com")
@@ -27,5 +30,6 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+
 
 settings = Settings()

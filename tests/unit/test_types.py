@@ -1,6 +1,7 @@
 """
 Unit tests for data types
 """
+
 import pytest
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -11,7 +12,7 @@ from src.services.data_sources.types import (
     SubscriptionRequest,
     UnsubscribeRequest,
     WebSocketMessage,
-    MessageType
+    MessageType,
 )
 
 
@@ -45,7 +46,7 @@ class TestOHLCData:
             trades=150,
             volume=Decimal("1234.56789"),
             interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-            interval=15
+            interval=15,
         )
 
     def test_ohlc_creation(self, sample_ohlc):
@@ -58,7 +59,9 @@ class TestOHLCData:
         assert sample_ohlc.vwap == Decimal("50250.00")
         assert sample_ohlc.trades == 150
         assert sample_ohlc.volume == Decimal("1234.56789")
-        assert sample_ohlc.interval_begin == datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        assert sample_ohlc.interval_begin == datetime(
+            2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc
+        )
         assert sample_ohlc.interval == 15
 
     def test_from_kraken(self):
@@ -73,7 +76,7 @@ class TestOHLCData:
             "trades": 100,
             "volume": "500.123",
             "interval_begin": "2024-01-01T12:00:00Z",
-            "interval": 15
+            "interval": 15,
         }
 
         ohlc = OHLCData.from_kraken(kraken_data)
@@ -86,7 +89,9 @@ class TestOHLCData:
         assert ohlc.vwap == Decimal("3025.00")
         assert ohlc.trades == 100
         assert ohlc.volume == Decimal("500.123")
-        assert ohlc.interval_begin == datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        assert ohlc.interval_begin == datetime(
+            2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc
+        )
         assert ohlc.interval == 15
 
     def test_from_kraken_with_different_timezone_format(self):
@@ -101,7 +106,7 @@ class TestOHLCData:
             "trades": 150,
             "volume": "1234.56789",
             "interval_begin": "2024-01-01T12:00:00Z",
-            "interval": 15
+            "interval": 15,
         }
 
         ohlc = OHLCData.from_kraken(kraken_data)
@@ -119,7 +124,7 @@ class TestOHLCData:
             "trades": 12345,
             "volume": "1234.56789012",
             "interval_begin": "2024-01-01T12:00:00Z",
-            "interval": 15
+            "interval": 15,
         }
 
         ohlc = OHLCData.from_kraken(kraken_data)
@@ -143,7 +148,7 @@ class TestOHLCData:
             "trades": "150",  # String instead of int
             "volume": "1234.56789",
             "interval_begin": "2024-01-01T12:00:00Z",
-            "interval": "15"  # String instead of int
+            "interval": "15",  # String instead of int
         }
 
         ohlc = OHLCData.from_kraken(kraken_data)
@@ -162,7 +167,7 @@ class TestOHLCData:
             trades=150,
             volume=Decimal("1234.56789"),
             interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-            interval=15
+            interval=15,
         )
 
         ohlc2 = OHLCData(
@@ -175,7 +180,7 @@ class TestOHLCData:
             trades=150,
             volume=Decimal("1234.56789"),
             interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-            interval=15
+            interval=15,
         )
 
         assert ohlc1 == ohlc2
@@ -187,8 +192,7 @@ class TestSubscriptionRequest:
     def test_creation_with_defaults(self):
         """Test creating subscription request with defaults"""
         req = SubscriptionRequest(
-            symbols=["BTC/USD", "ETH/USD"],
-            interval=OHLCInterval.M15
+            symbols=["BTC/USD", "ETH/USD"], interval=OHLCInterval.M15
         )
 
         assert req.symbols == ["BTC/USD", "ETH/USD"]
@@ -199,10 +203,7 @@ class TestSubscriptionRequest:
     def test_creation_with_all_params(self):
         """Test creating subscription request with all parameters"""
         req = SubscriptionRequest(
-            symbols=["BTC/USD"],
-            interval=OHLCInterval.M15,
-            snapshot=False,
-            req_id=123
+            symbols=["BTC/USD"], interval=OHLCInterval.M15, snapshot=False, req_id=123
         )
 
         assert req.symbols == ["BTC/USD"]
@@ -212,10 +213,7 @@ class TestSubscriptionRequest:
 
     def test_interval_as_int(self):
         """Test interval can be accessed as int"""
-        req = SubscriptionRequest(
-            symbols=["BTC/USD"],
-            interval=OHLCInterval.M15
-        )
+        req = SubscriptionRequest(symbols=["BTC/USD"], interval=OHLCInterval.M15)
 
         assert req.interval == 15
         assert req.interval.value == 15
@@ -227,8 +225,7 @@ class TestUnsubscribeRequest:
     def test_creation_with_defaults(self):
         """Test creating unsubscribe request with defaults"""
         req = UnsubscribeRequest(
-            symbols=["BTC/USD", "ETH/USD"],
-            interval=OHLCInterval.M15
+            symbols=["BTC/USD", "ETH/USD"], interval=OHLCInterval.M15
         )
 
         assert req.symbols == ["BTC/USD", "ETH/USD"]
@@ -238,9 +235,7 @@ class TestUnsubscribeRequest:
     def test_creation_with_req_id(self):
         """Test creating unsubscribe request with request ID"""
         req = UnsubscribeRequest(
-            symbols=["BTC/USD"],
-            interval=OHLCInterval.M15,
-            req_id=456
+            symbols=["BTC/USD"], interval=OHLCInterval.M15, req_id=456
         )
 
         assert req.symbols == ["BTC/USD"]
@@ -253,11 +248,7 @@ class TestWebSocketMessage:
 
     def test_creation_minimal(self):
         """Test creating message with minimal parameters"""
-        msg = WebSocketMessage(
-            type="update",
-            channel="ohlc",
-            data={"test": "data"}
-        )
+        msg = WebSocketMessage(type="update", channel="ohlc", data={"test": "data"})
 
         assert msg.type == "update"
         assert msg.channel == "ohlc"
@@ -272,7 +263,7 @@ class TestWebSocketMessage:
             channel="ohlc",
             data=None,
             req_id=789,
-            error="Test error message"
+            error="Test error message",
         )
 
         assert msg.type == "error"
@@ -281,16 +272,12 @@ class TestWebSocketMessage:
         assert msg.req_id == 789
         assert msg.error == "Test error message"
 
-    @pytest.mark.parametrize("msg_type", [
-        "snapshot", "update", "subscribe", "unsubscribe", "error"
-    ])
+    @pytest.mark.parametrize(
+        "msg_type", ["snapshot", "update", "subscribe", "unsubscribe", "error"]
+    )
     def test_valid_message_types(self, msg_type):
         """Test all valid message types"""
-        msg = WebSocketMessage(
-            type=msg_type,
-            channel="test",
-            data=None
-        )
+        msg = WebSocketMessage(type=msg_type, channel="test", data=None)
 
         assert msg.type == msg_type
 
@@ -307,15 +294,11 @@ class TestWebSocketMessage:
                 trades=150,
                 volume=Decimal("1234.56789"),
                 interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-                interval=15
+                interval=15,
             )
         ]
 
-        msg = WebSocketMessage(
-            type="update",
-            channel="ohlc",
-            data=ohlc_list
-        )
+        msg = WebSocketMessage(type="update", channel="ohlc", data=ohlc_list)
 
         assert msg.data == ohlc_list
         assert isinstance(msg.data[0], OHLCData)
@@ -323,33 +306,19 @@ class TestWebSocketMessage:
     def test_message_equality(self):
         """Test WebSocketMessage equality"""
         msg1 = WebSocketMessage(
-            type="update",
-            channel="ohlc",
-            data={"value": 123},
-            req_id=1
+            type="update", channel="ohlc", data={"value": 123}, req_id=1
         )
 
         msg2 = WebSocketMessage(
-            type="update",
-            channel="ohlc",
-            data={"value": 123},
-            req_id=1
+            type="update", channel="ohlc", data={"value": 123}, req_id=1
         )
 
         assert msg1 == msg2
 
     def test_message_inequality(self):
         """Test WebSocketMessage inequality"""
-        msg1 = WebSocketMessage(
-            type="update",
-            channel="ohlc",
-            data={"value": 123}
-        )
+        msg1 = WebSocketMessage(type="update", channel="ohlc", data={"value": 123})
 
-        msg2 = WebSocketMessage(
-            type="snapshot",
-            channel="ohlc",
-            data={"value": 123}
-        )
+        msg2 = WebSocketMessage(type="snapshot", channel="ohlc", data={"value": 123})
 
         assert msg1 != msg2

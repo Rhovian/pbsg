@@ -3,7 +3,8 @@ Integrated storage with backpressure control.
 Combines efficient bulk storage with infrastructure health monitoring.
 """
 
-from typing import List, Tuple, Optional, Callable
+from typing import List, Tuple, Optional, Callable, Dict
+from datetime import datetime, timezone, timedelta
 from loguru import logger
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -65,9 +66,10 @@ class OHLCStorage:
     def get_stats(self) -> dict:
         """Get storage statistics"""
         return {
-            'total_stored': self.total_stored,
-            'total_failed': self.total_failed,
-            'success_rate': self.total_stored / max(self.total_stored + self.total_failed, 1)
+            "total_stored": self.total_stored,
+            "total_failed": self.total_failed,
+            "success_rate": self.total_stored
+            / max(self.total_stored + self.total_failed, 1),
         }
 
     def log_stats(self) -> None:
@@ -87,11 +89,12 @@ class OHLCStorage:
 
 class IntegratedOHLCStorage:
     """
-    Storage layer with integrated backpressure control.
+    Storage layer with integrated backpressure control and time-delayed storage.
 
     Combines:
+    - Time-delayed storage (buffers incomplete intervals in memory)
     - Efficient bulk storage (psycopg2 execute_values)
-    - Duplicate detection and dropping
+    - Duplicate detection and overwriting (latest wins)
     - Storage health monitoring
     - Automatic pause/resume of ingestion
     - Fail-fast on unrecoverable storage issues
@@ -102,7 +105,8 @@ class IntegratedOHLCStorage:
         engine: Engine,
         pause_callback: Optional[Callable] = None,
         resume_callback: Optional[Callable] = None,
-        max_batch_size: int = 1000
+        max_batch_size: int = 1000,
+        storage_delay_minutes: int = 3,
     ):
         """
         Initialize integrated storage
@@ -112,65 +116,155 @@ class IntegratedOHLCStorage:
             pause_callback: Function to call when pausing ingestion
             resume_callback: Function to call when resuming ingestion
             max_batch_size: Maximum records per batch for bulk storage
+            storage_delay_minutes: Minutes to wait before storing completed intervals
         """
         # Core storage
         self.storage = OHLCStorage(engine, max_batch_size)
 
         # Backpressure controller
         self.backpressure = SimpleBackpressureController(
-            pause_callback=pause_callback,
-            resume_callback=resume_callback
+            pause_callback=pause_callback, resume_callback=resume_callback
         )
+
+        # Time-delayed storage
+        self.storage_delay = timedelta(minutes=storage_delay_minutes)
+        self.interval_buffer: Dict[Tuple[str, datetime], OHLCData] = (
+            {}
+        )  # (symbol, timestamp) -> latest_data
 
         # Combined stats
         self.total_accepted = 0
         self.total_rejected = 0
+        self.total_buffered = 0
+        self.total_flushed = 0
 
     async def store_batch(self, ohlc_data_list: List[OHLCData]) -> Tuple[int, int, int]:
         """
-        Store batch with backpressure control
+        Store batch with time-delayed storage and backpressure control
 
         Args:
             ohlc_data_list: List of OHLC data to store
 
         Returns:
-            Tuple of (accepted, rejected, total_input)
+            Tuple of (stored_or_buffered, rejected, total_input)
         """
         if not ohlc_data_list:
             return 0, 0, 0
 
-        # Filter out duplicates
-        accepted_data = []
+        # Flush old intervals to database first
+        await self._flush_old_intervals()
+
+        now = datetime.now(timezone.utc)
+        immediate_store = []  # Old intervals to store immediately
+        buffered_count = 0
         rejected_count = 0
 
         for ohlc in ohlc_data_list:
-            if self.backpressure.should_accept_data(ohlc):
-                accepted_data.append(ohlc)
+            buffer_key = (ohlc.symbol, ohlc.interval_begin)
+            time_since_interval = now - ohlc.interval_begin
+
+            # Determine if interval is recent (buffer) or old (store immediately)
+            if time_since_interval < self.storage_delay:
+                # Recent interval - store in buffer (overwrite existing)
+                self.interval_buffer[buffer_key] = ohlc
+                buffered_count += 1
+                self.total_buffered += 1
                 self.total_accepted += 1
+                logger.debug(f"Buffered: {ohlc.symbol} @ {ohlc.interval_begin}")
             else:
-                rejected_count += 1
-                self.total_rejected += 1
+                # Old interval - check backpressure and store immediately
+                if self.backpressure.should_accept_data(ohlc):
+                    immediate_store.append(ohlc)
+                    self.total_accepted += 1
+                else:
+                    rejected_count += 1
+                    self.total_rejected += 1
 
-        if not accepted_data:
-            logger.debug(f"All {len(ohlc_data_list)} records rejected (duplicates)")
-            return 0, rejected_count, len(ohlc_data_list)
+        # Store old intervals immediately
+        stored_count = 0
+        if immediate_store:
+            try:
+                success_count, failed_count, _ = self.storage.store_batch(
+                    immediate_store
+                )
+                stored_count = success_count
+                rejected_count += failed_count
+                await self.backpressure.handle_storage_result(
+                    success=(failed_count == 0)
+                )
+            except Exception as e:
+                logger.error(f"Immediate storage failed: {e}")
+                rejected_count += len(immediate_store)
+                await self.backpressure.handle_storage_result(success=False)
 
-        # Attempt to store accepted data
+        total_processed = stored_count + buffered_count
+        return total_processed, rejected_count, len(ohlc_data_list)
+
+    async def _flush_old_intervals(self) -> None:
+        """Flush buffered intervals that are older than storage delay"""
+        if not self.interval_buffer:
+            return
+
+        now = datetime.now(timezone.utc)
+        intervals_to_flush = []
+        keys_to_remove = []
+
+        # Find intervals ready for storage
+        for buffer_key, ohlc_data in self.interval_buffer.items():
+            time_since_interval = now - ohlc_data.interval_begin
+            if time_since_interval >= self.storage_delay:
+                intervals_to_flush.append(ohlc_data)
+                keys_to_remove.append(buffer_key)
+
+        # Store old intervals to database
+        if intervals_to_flush:
+            try:
+                success_count, failed_count, _ = self.storage.store_batch(
+                    intervals_to_flush
+                )
+                self.total_flushed += success_count
+
+                logger.debug(f"Flushed {success_count} intervals to database")
+
+                # Remove successfully stored intervals from buffer
+                for key in keys_to_remove:
+                    del self.interval_buffer[key]
+
+                await self.backpressure.handle_storage_result(
+                    success=(failed_count == 0)
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to flush intervals: {e}")
+                await self.backpressure.handle_storage_result(success=False)
+
+    async def force_flush_all(self) -> int:
+        """Force flush all buffered intervals to database (for shutdown/testing)"""
+        if not self.interval_buffer:
+            return 0
+
+        intervals_to_flush = list(self.interval_buffer.values())
+        keys_to_remove = list(self.interval_buffer.keys())
+
         try:
-            success_count, failed_count, processed_count = self.storage.store_batch(accepted_data)
+            success_count, failed_count, _ = self.storage.store_batch(
+                intervals_to_flush
+            )
+            self.total_flushed += success_count
 
-            # Report success to backpressure controller
+            logger.info(f"Force flushed {success_count} intervals to database")
+
+            # Clear the buffer
+            for key in keys_to_remove:
+                del self.interval_buffer[key]
+
             await self.backpressure.handle_storage_result(success=(failed_count == 0))
-
-            return success_count, rejected_count + failed_count, len(ohlc_data_list)
+            return success_count
 
         except Exception as e:
-            logger.error(f"Storage batch failed: {e}")
-
-            # Report failure to backpressure controller
+            logger.error(f"Failed to force flush intervals: {e}")
             await self.backpressure.handle_storage_result(success=False)
-
-            return 0, len(ohlc_data_list), len(ohlc_data_list)
+            return 0
 
     async def store_single(self, ohlc_data: OHLCData) -> bool:
         """
@@ -191,13 +285,17 @@ class IntegratedOHLCStorage:
         backpressure_stats = self.backpressure.get_stats()
 
         return {
-            'integrated': {
-                'total_accepted': self.total_accepted,
-                'total_rejected': self.total_rejected,
-                'acceptance_rate': self.total_accepted / max(self.total_accepted + self.total_rejected, 1)
+            "integrated": {
+                "total_accepted": self.total_accepted,
+                "total_rejected": self.total_rejected,
+                "total_buffered": self.total_buffered,
+                "total_flushed": self.total_flushed,
+                "currently_buffered": len(self.interval_buffer),
+                "acceptance_rate": self.total_accepted
+                / max(self.total_accepted + self.total_rejected, 1),
             },
-            'storage': storage_stats,
-            'backpressure': backpressure_stats
+            "storage": storage_stats,
+            "backpressure": backpressure_stats,
         }
 
     def log_comprehensive_stats(self) -> None:
@@ -205,6 +303,9 @@ class IntegratedOHLCStorage:
         logger.info(
             f"Integrated Storage - Accepted: {self.total_accepted}, "
             f"Rejected: {self.total_rejected}, "
+            f"Buffered: {self.total_buffered}, "
+            f"Flushed: {self.total_flushed}, "
+            f"Currently Buffered: {len(self.interval_buffer)}, "
             f"Rate: {(self.total_accepted / max(self.total_accepted + self.total_rejected, 1) * 100):.1f}%"
         )
 
@@ -212,16 +313,19 @@ class IntegratedOHLCStorage:
         self.backpressure.log_stats()
 
     def reset_stats(self) -> None:
-        """Reset all statistics"""
+        """Reset all statistics (but keep buffered intervals)"""
         self.total_accepted = 0
         self.total_rejected = 0
+        self.total_buffered = 0
+        self.total_flushed = 0
         self.storage.reset_stats()
         # Note: Backpressure controller stats track health, so we don't reset those
+        # Note: interval_buffer is preserved as it contains real data
 
     def is_healthy(self) -> bool:
         """Check if storage system is healthy"""
         backpressure_stats = self.backpressure.get_stats()
-        return backpressure_stats['health']['healthy']
+        return backpressure_stats["health"]["healthy"]
 
     def is_paused(self) -> bool:
         """Check if ingestion is currently paused"""

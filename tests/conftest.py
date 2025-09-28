@@ -1,6 +1,7 @@
 """
 Global pytest fixtures and configuration for all tests
 """
+
 import pytest
 import asyncio
 import json
@@ -43,7 +44,7 @@ class SeedDataGenerator:
         volatility: float = 0.02,
         start_time: Optional[datetime] = None,
         count: int = 1,
-        interval_minutes: int = 15
+        interval_minutes: int = 15,
     ) -> List[OHLCData]:
         """Generate realistic OHLC data with random walk"""
         if start_time is None:
@@ -62,8 +63,8 @@ class SeedDataGenerator:
             close_price = new_price
 
             # High and low with some variance
-            high_variance = abs(random.gauss(0, volatility/2))
-            low_variance = abs(random.gauss(0, volatility/2))
+            high_variance = abs(random.gauss(0, volatility / 2))
+            low_variance = abs(random.gauss(0, volatility / 2))
 
             high_price = max(open_price, close_price) * (1 + high_variance)
             low_price = min(open_price, close_price) * (1 - low_variance)
@@ -88,7 +89,7 @@ class SeedDataGenerator:
                 trades=trades,
                 volume=Decimal(str(round(volume, 8))),
                 interval_begin=start_time + timedelta(minutes=i * interval_minutes),
-                interval=interval_minutes
+                interval=interval_minutes,
             )
 
             ohlc_list.append(ohlc)
@@ -98,8 +99,7 @@ class SeedDataGenerator:
 
     @staticmethod
     def generate_kraken_ohlc_message(
-        ohlc_data: List[OHLCData],
-        message_type: str = "snapshot"
+        ohlc_data: List[OHLCData], message_type: str = "snapshot"
     ) -> Dict[str, Any]:
         """Generate Kraken-format WebSocket OHLC message"""
         candles = []
@@ -113,23 +113,21 @@ class SeedDataGenerator:
                 "vwap": str(ohlc.vwap),
                 "trades": ohlc.trades,
                 "volume": str(ohlc.volume),
-                "interval_begin": ohlc.interval_begin.isoformat().replace("+00:00", "Z"),
-                "interval": ohlc.interval
+                "interval_begin": ohlc.interval_begin.isoformat().replace(
+                    "+00:00", "Z"
+                ),
+                "interval": ohlc.interval,
             }
             candles.append(candle)
 
-        return {
-            "channel": "ohlc",
-            "type": message_type,
-            "data": candles
-        }
+        return {"channel": "ohlc", "type": message_type, "data": candles}
 
     @staticmethod
     def generate_subscription_response(
         success: bool = True,
         symbols: List[str] = None,
         error: Optional[str] = None,
-        req_id: int = 1
+        req_id: int = 1,
     ) -> Dict[str, Any]:
         """Generate Kraken subscription response"""
         if success:
@@ -140,22 +138,21 @@ class SeedDataGenerator:
                     "channel": "ohlc",
                     "interval": 15,
                     "snapshot": True,
-                    "symbol": symbols or ["BTC/USD"]
+                    "symbol": symbols or ["BTC/USD"],
                 },
-                "req_id": req_id
+                "req_id": req_id,
             }
         else:
             return {
                 "method": "subscribe",
                 "success": False,
                 "error": error or "Subscription failed",
-                "req_id": req_id
+                "req_id": req_id,
             }
 
     @staticmethod
     def generate_error_message(
-        error_msg: str = "Invalid request",
-        req_id: Optional[int] = None
+        error_msg: str = "Invalid request", req_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """Generate error message"""
         msg = {"error": error_msg}
@@ -173,7 +170,7 @@ class SeedDataGenerator:
         scenario: str = "normal",
         symbol: str = "BTC/USD",
         duration_minutes: int = 60,
-        interval_minutes: int = 15
+        interval_minutes: int = 15,
     ) -> List[OHLCData]:
         """Generate market scenarios for testing
 
@@ -186,7 +183,9 @@ class SeedDataGenerator:
         - pump: Sudden spike followed by correction
         """
         count = duration_minutes // interval_minutes
-        base_price = 50000.0 if "BTC" in symbol else 3000.0 if "ETH" in symbol else 100.0
+        base_price = (
+            50000.0 if "BTC" in symbol else 3000.0 if "ETH" in symbol else 100.0
+        )
 
         scenarios_config = {
             "normal": {"volatility": 0.01, "trend": 0},
@@ -194,7 +193,7 @@ class SeedDataGenerator:
             "bear": {"volatility": 0.015, "trend": -0.002},
             "volatile": {"volatility": 0.05, "trend": 0},
             "flash_crash": {"volatility": 0.03, "trend": -0.01, "recovery_at": 0.5},
-            "pump": {"volatility": 0.03, "trend": 0.01, "correction_at": 0.5}
+            "pump": {"volatility": 0.03, "trend": 0.01, "correction_at": 0.5},
         }
 
         config = scenarios_config.get(scenario, scenarios_config["normal"])
@@ -204,7 +203,9 @@ class SeedDataGenerator:
 
         for i in range(count):
             # Apply scenario-specific logic
-            if scenario == "flash_crash" and i >= count * config.get("recovery_at", 0.5):
+            if scenario == "flash_crash" and i >= count * config.get(
+                "recovery_at", 0.5
+            ):
                 config["trend"] = 0.005  # Recovery phase
             elif scenario == "pump" and i >= count * config.get("correction_at", 0.5):
                 config["trend"] = -0.005  # Correction phase
@@ -220,8 +221,8 @@ class SeedDataGenerator:
             open_price = current_price
             close_price = new_price
 
-            high_variance = abs(random.gauss(0, config["volatility"]/2))
-            low_variance = abs(random.gauss(0, config["volatility"]/2))
+            high_variance = abs(random.gauss(0, config["volatility"] / 2))
+            low_variance = abs(random.gauss(0, config["volatility"] / 2))
 
             high_price = max(open_price, close_price) * (1 + high_variance)
             low_price = min(open_price, close_price) * (1 - low_variance)
@@ -243,7 +244,7 @@ class SeedDataGenerator:
                 trades=trades,
                 volume=Decimal(str(round(volume, 8))),
                 interval_begin=start_time + timedelta(minutes=i * interval_minutes),
-                interval=interval_minutes
+                interval=interval_minutes,
             )
 
             ohlc_list.append(ohlc)

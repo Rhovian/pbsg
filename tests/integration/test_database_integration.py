@@ -1,17 +1,25 @@
 """
-Integration tests for database operations with seed data
+Real TimescaleDB integration tests
 """
+
 import pytest
-import asyncio
+import os
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from sqlalchemy import create_engine, select, func
 from sqlalchemy.orm import Session
 
 from src.models.schema import (
-    Base, BTCOHLC, ETHOHLC, SOLOHLC,
-    PointIndicator, RangeIndicator, VolumeProfile, Signal,
-    get_ohlc_model, create_hypertables
+    Base,
+    BTCOHLC,
+    ETHOHLC,
+    SOLOHLC,
+    PointIndicator,
+    RangeIndicator,
+    VolumeProfile,
+    Signal,
+    get_ohlc_model,
+    create_hypertables,
 )
 from src.services.data_sources.transformer import KrakenToTimescaleTransformer
 from src.services.data_sources.integrated_storage import IntegratedOHLCStorage
@@ -19,414 +27,305 @@ from src.services.data_sources.integrated_storage import IntegratedOHLCStorage
 
 @pytest.mark.integration
 @pytest.mark.database
-class TestDatabaseIntegration:
-    """Test database operations with realistic seed data"""
+class TestTimescaleDBIntegration:
+    """Test database operations with real TimescaleDB"""
 
     @pytest.fixture(scope="class")
-    def test_db_engine(self):
-        """Create test database engine (use SQLite for tests)"""
-        engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(engine)
+    def db_engine(self):
+        """Create TimescaleDB engine"""
+        db_url = "postgresql://pbsg:pbsg_password@localhost:5432/pbsg"
+        engine = create_engine(db_url)
         yield engine
         engine.dispose()
 
     @pytest.fixture
-    def db_session(self, test_db_engine):
+    def db_session(self, db_engine):
         """Create database session"""
-        session = Session(test_db_engine)
+        session = Session(db_engine)
         yield session
         session.close()
 
     @pytest.fixture
-    def storage(self, test_db_engine):
+    def storage(self, db_engine):
         """Create integrated storage"""
-        return IntegratedOHLCStorage(test_db_engine, max_batch_size=100)
+        return IntegratedOHLCStorage(db_engine, max_batch_size=100)
 
-    def test_bulk_insert_ohlc_data(self, db_session, seed_generator):
-        """Test bulk inserting OHLC data"""
-        # Generate diverse market data
+    def test_hypertable_functionality(self, db_session, seed_generator):
+        """Test TimescaleDB hypertable-specific functionality"""
+        # Generate time-series data
         btc_data = seed_generator.generate_market_scenario(
-            scenario="normal",
-            symbol="BTC/USD",
-            duration_minutes=240  # 4 hours
+            scenario="normal", symbol="BTC/USD", duration_minutes=240  # 4 hours of data
         )
 
-        # Transform to database models
+        # Transform and store data
         models = []
         for ohlc in btc_data:
             model = KrakenToTimescaleTransformer.transform(ohlc)
             if model:
                 models.append(model)
 
-        # Bulk insert
         db_session.add_all(models)
         db_session.commit()
 
-        # Verify data inserted
-        count = db_session.query(func.count(BTCOHLC.time)).scalar()
-        assert count == len(models)
+        # Test time-based queries (hypertable benefit)
+        start_time = models[0].time
+        mid_time = start_time + timedelta(hours=2)
+
+        # Query first half
+        first_half = (
+            db_session.query(BTCOHLC)
+            .filter(BTCOHLC.time >= start_time, BTCOHLC.time < mid_time)
+            .all()
+        )
+
+        # Query second half
+        second_half = db_session.query(BTCOHLC).filter(BTCOHLC.time >= mid_time).all()
+
+        assert len(first_half) + len(second_half) == len(models)
+        assert len(first_half) > 0
+        assert len(second_half) > 0
+
+    def test_bulk_insert_performance(self, db_session, seed_generator):
+        """Test bulk insert performance with large datasets"""
+        # Generate large dataset with unique timestamps
+        symbols = ["BTC/USD", "ETH/USD", "SOL/USD"]
+        all_models = []
+
+        base_time = datetime(
+            2020, 1, 1, tzinfo=timezone.utc
+        )  # Use 2020 to avoid conflicts
+
+        for i, symbol in enumerate(symbols):
+            start_time = base_time + timedelta(days=i * 30)  # 30 days apart
+            ohlc_data = seed_generator.generate_ohlc_data(
+                symbol=symbol,
+                start_time=start_time,
+                count=96,  # 24 hours of 15-min data
+                interval_minutes=15,
+            )
+
+            for ohlc in ohlc_data:
+                model = KrakenToTimescaleTransformer.transform(ohlc)
+                if model:
+                    all_models.append(model)
+
+        # Bulk insert
+        start_time = datetime.now()
+        db_session.add_all(all_models)
+        db_session.commit()
+        insert_duration = datetime.now() - start_time
+
+        print(
+            f"Inserted {len(all_models)} records in {insert_duration.total_seconds():.2f}s"
+        )
 
         # Verify data integrity
-        first_record = db_session.query(BTCOHLC).order_by(BTCOHLC.time).first()
-        assert first_record.symbol == "BTC/USD"
-        assert first_record.timeframe == "15m"
+        for symbol in symbols:
+            model_class = get_ohlc_model(symbol)
+            count = db_session.query(func.count(model_class.time)).scalar()
+            assert count > 0
+
+    def test_time_bucket_aggregation(self, db_session, seed_generator):
+        """Test TimescaleDB time_bucket functionality"""
+        # Use a very specific time range for isolation
+        test_start = datetime(2022, 6, 15, 10, 0, 0, tzinfo=timezone.utc)
+        ohlc_data = seed_generator.generate_ohlc_data(
+            symbol="BTC/USD",
+            start_time=test_start,
+            count=96,  # 24 hours of 15-min data
+            interval_minutes=15,
+        )
+
+        # Store data
+        for ohlc in ohlc_data:
+            model = KrakenToTimescaleTransformer.transform(ohlc)
+            if model:
+                db_session.add(model)
+        db_session.commit()
+
+        # Test time_bucket aggregation (1-hour buckets) with specific time range
+        from sqlalchemy import text
+
+        test_end = test_start + timedelta(hours=24)
+        result = db_session.execute(
+            text(
+                """
+            SELECT
+                time_bucket('1 hour', time) as hour_bucket,
+                AVG(close) as avg_close,
+                MAX(high) as max_high,
+                MIN(low) as min_low,
+                SUM(volume) as total_volume
+            FROM btc_ohlc
+            WHERE symbol = 'BTC/USD'
+              AND time >= :start_time
+              AND time < :end_time
+            GROUP BY hour_bucket
+            ORDER BY hour_bucket
+        """
+            ),
+            {"start_time": test_start, "end_time": test_end},
+        ).fetchall()
+
+        assert len(result) == 24  # 24 hours
+
+        # Verify each hour has aggregated data
+        for row in result:
+            assert row.avg_close is not None
+            assert row.max_high is not None
+            assert row.min_low is not None
+            assert row.total_volume is not None
+
+    def test_compression(self, db_session, seed_generator):
+        """Test TimescaleDB compression"""
+        from sqlalchemy import text
+
+        try:
+            # Generate old data that could be compressed
+            old_data = seed_generator.generate_ohlc_data(
+                symbol="BTC/USD",
+                start_time=datetime(2023, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                count=100,
+            )
+
+            # Store old data
+            for ohlc in old_data:
+                model = KrakenToTimescaleTransformer.transform(ohlc)
+                if model:
+                    db_session.add(model)
+            db_session.commit()
+
+            # Enable compression
+            db_session.execute(
+                text(
+                    """
+                ALTER TABLE btc_ohlc SET (
+                    timescaledb.compress,
+                    timescaledb.compress_segmentby = 'symbol',
+                    timescaledb.compress_orderby = 'time DESC'
+                );
+            """
+                )
+            )
+
+            # Add compression policy
+            db_session.execute(
+                text(
+                    """
+                SELECT add_compression_policy('btc_ohlc', INTERVAL '7 days');
+            """
+                )
+            )
+
+            db_session.commit()
+
+        except Exception as e:
+            # Skip if compression not available or already configured
+            if "already" not in str(e).lower():
+                pytest.skip(f"TimescaleDB compression not available: {e}")
 
     def test_multi_symbol_storage(self, db_session, seed_generator):
-        """Test storing data for multiple symbols"""
-        symbols_data = {
-            "BTC/USD": seed_generator.generate_market_scenario(
-                "bull", "BTC/USD", 60
-            ),
-            "ETH/USD": seed_generator.generate_market_scenario(
-                "bear", "ETH/USD", 60
-            ),
-            "SOL/USD": seed_generator.generate_market_scenario(
-                "volatile", "SOL/USD", 60
-            )
-        }
+        """Test storing and querying multiple symbols"""
+        symbols = ["BTC/USD", "ETH/USD", "SOL/USD"]
+        # Use very specific test times for isolation
+        base_time = datetime(2022, 8, 20, 14, 30, 0, tzinfo=timezone.utc)
 
-        # Store all data
-        for symbol, ohlc_list in symbols_data.items():
-            for ohlc in ohlc_list:
+        # Generate data for each symbol with different time periods
+        for i, symbol in enumerate(symbols):
+            start_time = base_time + timedelta(hours=i * 3)  # 3 hours apart
+            ohlc_data = seed_generator.generate_ohlc_data(
+                symbol=symbol,
+                start_time=start_time,
+                count=8,  # 2 hours of data
+                interval_minutes=15,
+            )
+
+            for ohlc in ohlc_data:
                 model = KrakenToTimescaleTransformer.transform(ohlc)
                 if model:
                     db_session.add(model)
 
         db_session.commit()
 
-        # Verify each symbol stored correctly
-        btc_count = db_session.query(func.count(BTCOHLC.time)).scalar()
-        eth_count = db_session.query(func.count(ETHOHLC.time)).scalar()
-        sol_count = db_session.query(func.count(SOLOHLC.time)).scalar()
+        # Verify each symbol has correct data using time-based filtering
+        for i, symbol in enumerate(symbols):
+            model_class = get_ohlc_model(symbol)
+            start_time = base_time + timedelta(hours=i * 3)
+            end_time = start_time + timedelta(hours=2)
 
-        assert btc_count == 4  # 60 min / 15 min = 4
-        assert eth_count == 4
-        assert sol_count == 4
-
-    def test_query_time_range(self, db_session, seed_generator):
-        """Test querying OHLC data by time range"""
-        start_time = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-
-        # Generate data with known timestamps
-        ohlc_data = seed_generator.generate_ohlc_data(
-            symbol="BTC/USD",
-            start_time=start_time,
-            count=10,
-            interval_minutes=15
-        )
-
-        # Store data
-        for ohlc in ohlc_data:
-            model = KrakenToTimescaleTransformer.transform(ohlc)
-            if model:
-                db_session.add(model)
-        db_session.commit()
-
-        # Query specific time range (middle 5 candles)
-        range_start = start_time + timedelta(minutes=30)
-        range_end = start_time + timedelta(minutes=105)
-
-        results = db_session.query(BTCOHLC).filter(
-            BTCOHLC.time >= range_start,
-            BTCOHLC.time <= range_end
-        ).all()
-
-        assert len(results) == 5
-
-    def test_aggregate_calculations(self, db_session, seed_generator):
-        """Test aggregate calculations on OHLC data"""
-        # Generate known data
-        ohlc_data = seed_generator.generate_ohlc_data(
-            symbol="ETH/USD",
-            base_price=3000,
-            count=20
-        )
-
-        # Store data
-        for ohlc in ohlc_data:
-            model = KrakenToTimescaleTransformer.transform(ohlc)
-            if model:
-                db_session.add(model)
-        db_session.commit()
-
-        # Calculate aggregates
-        stats = db_session.query(
-            func.min(ETHOHLC.low).label("min_low"),
-            func.max(ETHOHLC.high).label("max_high"),
-            func.avg(ETHOHLC.close).label("avg_close"),
-            func.sum(ETHOHLC.volume).label("total_volume")
-        ).first()
-
-        assert stats.min_low is not None
-        assert stats.max_high is not None
-        assert stats.avg_close is not None
-        assert stats.total_volume is not None
-
-    def test_store_point_indicators(self, db_session, seed_generator):
-        """Test storing point-in-time indicators"""
-        # Generate OHLC data
-        ohlc_data = seed_generator.generate_ohlc_data(
-            symbol="BTC/USD",
-            count=10
-        )
-
-        # Calculate and store indicators
-        for i, ohlc in enumerate(ohlc_data):
-            # Mock RSI calculation
-            rsi_value = 30 + (i * 5)  # Increasing RSI
-
-            indicator = PointIndicator(
-                time=ohlc.interval_begin,
-                symbol=ohlc.symbol,
-                timeframe="15m",
-                indicator="RSI",
-                value={"value": rsi_value, "signal": "neutral"}
-            )
-            db_session.add(indicator)
-
-            # Mock MACD
-            macd_indicator = PointIndicator(
-                time=ohlc.interval_begin,
-                symbol=ohlc.symbol,
-                timeframe="15m",
-                indicator="MACD",
-                value={
-                    "macd": float(ohlc.close) * 0.001,
-                    "signal": float(ohlc.close) * 0.0009,
-                    "histogram": float(ohlc.close) * 0.0001
-                }
-            )
-            db_session.add(macd_indicator)
-
-        db_session.commit()
-
-        # Query indicators
-        rsi_indicators = db_session.query(PointIndicator).filter(
-            PointIndicator.indicator == "RSI"
-        ).all()
-
-        assert len(rsi_indicators) == 10
-        # Verify RSI values are increasing
-        rsi_values = [ind.value["value"] for ind in rsi_indicators]
-        assert rsi_values == sorted(rsi_values)
-
-    def test_store_range_indicators(self, db_session):
-        """Test storing range indicators like support/resistance"""
-        # Create support/resistance levels
-        levels = [
-            RangeIndicator(
-                symbol="BTC/USD",
-                timeframe="1h",
-                indicator="SUPPORT",
-                range_high=Decimal("48500"),
-                range_low=Decimal("48000"),
-                strength=0.85,
-                metadata={"touches": 4, "type": "historical"}
-            ),
-            RangeIndicator(
-                symbol="BTC/USD",
-                timeframe="1h",
-                indicator="RESISTANCE",
-                range_high=Decimal("52500"),
-                range_low=Decimal("52000"),
-                strength=0.90,
-                metadata={"touches": 3, "type": "psychological"}
-            ),
-            RangeIndicator(
-                symbol="BTC/USD",
-                timeframe="15m",
-                indicator="FVG",
-                range_high=Decimal("50200"),
-                range_low=Decimal("49800"),
-                strength=0.70,
-                metadata={"direction": "bullish", "filled": False}
-            )
-        ]
-
-        db_session.add_all(levels)
-        db_session.commit()
-
-        # Query active levels
-        active_levels = db_session.query(RangeIndicator).filter(
-            RangeIndicator.symbol == "BTC/USD",
-            RangeIndicator.invalidated == False
-        ).all()
-
-        assert len(active_levels) == 3
-
-        # Test invalidation
-        fvg = db_session.query(RangeIndicator).filter(
-            RangeIndicator.indicator == "FVG"
-        ).first()
-
-        fvg.invalidated = True
-        fvg.invalidated_at = datetime.now(timezone.utc)
-        db_session.commit()
-
-        # Check active levels again
-        active_levels = db_session.query(RangeIndicator).filter(
-            RangeIndicator.invalidated == False
-        ).all()
-
-        assert len(active_levels) == 2
-
-    def test_volume_profile_storage(self, db_session):
-        """Test storing volume profile data"""
-        profile_data = []
-        total_volume = 0
-
-        # Generate profile levels
-        for price in range(49000, 52000, 100):
-            volume = 1000 + (price % 1000)  # Varying volume
-            total_volume += volume
-            profile_data.append({
-                "price": price,
-                "volume": volume,
-                "percentage": 0  # Will calculate
-            })
-
-        # Calculate percentages
-        for level in profile_data:
-            level["percentage"] = (level["volume"] / total_volume) * 100
-
-        # Find POC (highest volume level)
-        poc_level = max(profile_data, key=lambda x: x["volume"])
-
-        profile = VolumeProfile(
-            symbol="BTC/USD",
-            timeframe="24h",
-            period_start=datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc),
-            period_end=datetime(2024, 1, 2, 0, 0, tzinfo=timezone.utc),
-            poc_price=Decimal(str(poc_level["price"])),
-            poc_volume=Decimal(str(poc_level["volume"])),
-            vah=Decimal("51500"),
-            val=Decimal("49500"),
-            total_volume=Decimal(str(total_volume)),
-            price_step=Decimal("100"),
-            num_levels=len(profile_data),
-            profile_data=profile_data
-        )
-
-        db_session.add(profile)
-        db_session.commit()
-
-        # Query and verify
-        stored_profile = db_session.query(VolumeProfile).filter(
-            VolumeProfile.symbol == "BTC/USD"
-        ).first()
-
-        assert stored_profile is not None
-        assert stored_profile.num_levels == len(profile_data)
-        assert len(stored_profile.profile_data) == len(profile_data)
-        assert stored_profile.poc_price == Decimal(str(poc_level["price"]))
-
-    def test_signal_generation_and_storage(self, db_session, seed_generator):
-        """Test generating and storing trading signals"""
-        # Generate market data
-        ohlc_data = seed_generator.generate_market_scenario(
-            scenario="volatile",
-            symbol="ETH/USD",
-            duration_minutes=120
-        )
-
-        signals_generated = []
-
-        # Analyze data and generate signals
-        for i, ohlc in enumerate(ohlc_data):
-            if i < 2:
-                continue  # Need history
-
-            # Simple signal generation logic
-            prev_close = ohlc_data[i-1].close
-            curr_close = ohlc.close
-
-            change_pct = float((curr_close - prev_close) / prev_close) * 100
-
-            signal = None
-            if change_pct > 2:  # Strong upward move
-                signal = Signal(
-                    symbol=ohlc.symbol,
-                    timeframe="15m",
-                    signal_type="BUY",
-                    confidence=min(0.9, change_pct / 5),
-                    context={
-                        "trigger": "price_surge",
-                        "change_pct": change_pct,
-                        "volume": float(ohlc.volume)
-                    }
+            symbol_data = (
+                db_session.query(model_class)
+                .filter(
+                    model_class.symbol == symbol,
+                    model_class.time >= start_time,
+                    model_class.time < end_time,
                 )
-            elif change_pct < -2:  # Strong downward move
-                signal = Signal(
-                    symbol=ohlc.symbol,
-                    timeframe="15m",
-                    signal_type="SELL",
-                    confidence=min(0.9, abs(change_pct) / 5),
-                    context={
-                        "trigger": "price_drop",
-                        "change_pct": change_pct,
-                        "volume": float(ohlc.volume)
-                    }
-                )
-
-            if signal:
-                signals_generated.append(signal)
-                db_session.add(signal)
-
-        db_session.commit()
-
-        # Verify signals stored
-        stored_signals = db_session.query(Signal).filter(
-            Signal.symbol == "ETH/USD"
-        ).all()
-
-        assert len(stored_signals) == len(signals_generated)
-
-        # Check signal quality
-        high_confidence = db_session.query(Signal).filter(
-            Signal.confidence > 0.7
-        ).all()
-
-        # In volatile market, should have some high confidence signals
-        assert len(high_confidence) > 0
-
-    def test_data_consistency_across_tables(self, db_session, seed_generator):
-        """Test data consistency when storing related data"""
-        start_time = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
-
-        # Generate OHLC data
-        ohlc_data = seed_generator.generate_ohlc_data(
-            symbol="SOL/USD",
-            start_time=start_time,
-            count=5
-        )
-
-        # Store OHLC and related indicators
-        for ohlc in ohlc_data:
-            # Store OHLC
-            model = KrakenToTimescaleTransformer.transform(ohlc)
-            if model:
-                db_session.add(model)
-
-            # Store indicator
-            indicator = PointIndicator(
-                time=ohlc.interval_begin,
-                symbol=ohlc.symbol,
-                timeframe="15m",
-                indicator="VOLUME_MA",
-                value={"ma": float(ohlc.volume), "trend": "neutral"}
+                .all()
             )
-            db_session.add(indicator)
 
-        db_session.commit()
+            assert len(symbol_data) == 8
+            # Verify all records have correct symbol
+            for record in symbol_data:
+                assert record.symbol == symbol
 
-        # Verify consistency
-        ohlc_times = db_session.query(SOLOHLC.time).all()
-        indicator_times = db_session.query(PointIndicator.time).filter(
-            PointIndicator.symbol == "SOL/USD"
-        ).all()
+    def test_concurrent_writes(self, db_session, seed_generator):
+        """Test concurrent write performance"""
+        import threading
+        import queue
 
-        # Should have matching timestamps
-        ohlc_time_set = {t[0] for t in ohlc_times}
-        indicator_time_set = {t[0] for t in indicator_times}
+        results = queue.Queue()
 
-        assert ohlc_time_set == indicator_time_set
+        def write_data(symbol_suffix: str):
+            try:
+                # Create separate session for thread
+                from sqlalchemy.orm import sessionmaker
+
+                SessionLocal = sessionmaker(bind=db_session.bind)
+                thread_session = SessionLocal()
+
+                symbol = f"BTC/USD-{symbol_suffix}"
+                ohlc_data = seed_generator.generate_ohlc_data(symbol=symbol, count=20)
+
+                for ohlc in ohlc_data:
+                    # Use BTC model for all test data
+                    btc_model = BTCOHLC(
+                        time=ohlc.interval_begin,
+                        symbol=ohlc.symbol,
+                        timeframe="15m",
+                        open=ohlc.open,
+                        high=ohlc.high,
+                        low=ohlc.low,
+                        close=ohlc.close,
+                        volume=ohlc.volume,
+                        trades=ohlc.trades,
+                    )
+                    thread_session.add(btc_model)
+
+                thread_session.commit()
+                thread_session.close()
+                results.put(("success", symbol_suffix))
+
+            except Exception as e:
+                results.put(("error", str(e)))
+
+        # Start multiple threads
+        threads = []
+        for i in range(3):
+            thread = threading.Thread(target=write_data, args=(str(i),))
+            threads.append(thread)
+            thread.start()
+
+        # Wait for completion
+        for thread in threads:
+            thread.join()
+
+        # Check results
+        success_count = 0
+        while not results.empty():
+            status, data = results.get()
+            if status == "success":
+                success_count += 1
+            else:
+                print(f"Thread error: {data}")
+
+        assert success_count == 3

@@ -1,6 +1,7 @@
 """
 Unit tests for BaseWebSocketHandler
 """
+
 import pytest
 import asyncio
 import json
@@ -29,16 +30,9 @@ class ConcreteWebSocketHandler(BaseWebSocketHandler):
             data = json.loads(message)
             if "error" in data:
                 return WebSocketMessage(
-                    type="error",
-                    channel="test",
-                    data=None,
-                    error=data["error"]
+                    type="error", channel="test", data=None, error=data["error"]
                 )
-            return WebSocketMessage(
-                type="update",
-                channel="test",
-                data=data
-            )
+            return WebSocketMessage(type="update", channel="test", data=data)
         except json.JSONDecodeError:
             return None
 
@@ -186,11 +180,7 @@ class TestBaseWebSocketHandler:
         callback = AsyncMock()
         handler.add_callback("test", callback)
 
-        message = WebSocketMessage(
-            type="update",
-            channel="test",
-            data={"value": 123}
-        )
+        message = WebSocketMessage(type="update", channel="test", data={"value": 123})
 
         await handler._process_message(message)
         callback.assert_called_once_with(message)
@@ -198,10 +188,7 @@ class TestBaseWebSocketHandler:
     async def test_process_error_message(self, handler):
         """Test processing error message"""
         message = WebSocketMessage(
-            type="error",
-            channel="test",
-            data=None,
-            error="Test error"
+            type="error", channel="test", data=None, error="Test error"
         )
 
         # Should not raise, just log
@@ -212,11 +199,7 @@ class TestBaseWebSocketHandler:
         callback = AsyncMock(side_effect=Exception("Callback failed"))
         handler.add_callback("test", callback)
 
-        message = WebSocketMessage(
-            type="update",
-            channel="test",
-            data={"value": 123}
-        )
+        message = WebSocketMessage(type="update", channel="test", data={"value": 123})
 
         # Should not raise, error should be logged
         await handler._process_message(message)
@@ -232,11 +215,7 @@ class TestBaseWebSocketHandler:
         callback = AsyncMock()
         handler.add_callback("test", callback)
 
-        message = WebSocketMessage(
-            type="update",
-            channel="test",
-            data={"value": 123}
-        )
+        message = WebSocketMessage(type="update", channel="test", data={"value": 123})
 
         # Create task with current event loop
         process_task = asyncio.create_task(handler._process_message(message))
@@ -257,13 +236,18 @@ class TestBaseWebSocketHandler:
         # Now callback should be called
         callback.assert_called_once_with(message)
 
-    @pytest.mark.parametrize("reconnect_attempt,should_reconnect", [
-        (0, True),
-        (5, True),
-        (9, True),
-        (10, False),
-    ])
-    async def test_reconnection_attempts(self, handler, reconnect_attempt, should_reconnect):
+    @pytest.mark.parametrize(
+        "reconnect_attempt,should_reconnect",
+        [
+            (0, True),
+            (5, True),
+            (9, True),
+            (10, False),
+        ],
+    )
+    async def test_reconnection_attempts(
+        self, handler, reconnect_attempt, should_reconnect
+    ):
         """Test reconnection attempt limits"""
         handler.reconnect_attempts = reconnect_attempt
 
@@ -279,9 +263,7 @@ class TestBaseWebSocketHandler:
 
     async def test_resubscribe_after_reconnection(self, handler, mock_connect):
         """Test resubscription after reconnection"""
-        handler.subscriptions = {
-            "test": {"symbols": ["BTC/USD"], "snapshot": True}
-        }
+        handler.subscriptions = {"test": {"symbols": ["BTC/USD"], "snapshot": True}}
 
         # Mock successful connection
         mock_ws = AsyncMock()
@@ -322,7 +304,7 @@ class TestBaseWebSocketHandler:
 
         async def message_generator():
             yield '{"valid": "json"}'
-            yield 'invalid json'
+            yield "invalid json"
             yield '{"another": "valid"}'
 
         mock_ws.__aiter__ = lambda self: message_generator()
@@ -391,11 +373,7 @@ class TestBaseWebSocketHandler:
         handler.add_callback("test", callback1)
         handler.add_callback("test", callback2)
 
-        message = WebSocketMessage(
-            type="update",
-            channel="test",
-            data={"value": 123}
-        )
+        message = WebSocketMessage(type="update", channel="test", data={"value": 123})
 
         await handler._process_message(message)
 

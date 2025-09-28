@@ -22,18 +22,15 @@ class KrakenOHLCHandler(BaseWebSocketHandler):
                 "channel": "ohlc",
                 "symbol": symbols,
                 "interval": 15,  # Fixed 15-minute interval
-                "snapshot": snapshot
+                "snapshot": snapshot,
             },
-            "req_id": self.request_id
+            "req_id": self.request_id,
         }
 
         # Store subscription info for reconnection
         sub_key = "ohlc_15"
         if sub_key not in self.subscriptions:
-            self.subscriptions[sub_key] = {
-                "symbols": [],
-                "snapshot": snapshot
-            }
+            self.subscriptions[sub_key] = {"symbols": [], "snapshot": snapshot}
 
         # Add symbols to subscription (avoid duplicates)
         for symbol in symbols:
@@ -51,9 +48,9 @@ class KrakenOHLCHandler(BaseWebSocketHandler):
             "params": {
                 "channel": "ohlc",
                 "symbol": symbols,
-                "interval": 15  # Fixed 15-minute interval
+                "interval": 15,  # Fixed 15-minute interval
             },
-            "req_id": self.request_id
+            "req_id": self.request_id,
         }
 
         # Remove from subscriptions
@@ -84,7 +81,7 @@ class KrakenOHLCHandler(BaseWebSocketHandler):
                         type=msg_type,
                         channel="ohlc",
                         data=data.get("result"),
-                        req_id=data.get("req_id")
+                        req_id=data.get("req_id"),
                     )
                 elif "error" in data:
                     return WebSocketMessage(
@@ -92,7 +89,7 @@ class KrakenOHLCHandler(BaseWebSocketHandler):
                         channel="ohlc",
                         data=None,
                         error=data["error"],
-                        req_id=data.get("req_id")
+                        req_id=data.get("req_id"),
                     )
 
             # Handle OHLC data
@@ -104,24 +101,19 @@ class KrakenOHLCHandler(BaseWebSocketHandler):
                 if "data" in data and isinstance(data["data"], list):
                     for candle in data["data"]:
                         try:
+                            # Only add successfully parsed OHLC data
                             ohlc = OHLCData.from_kraken(candle)
                             ohlc_data.append(ohlc)
                         except Exception as e:
                             logger.error(f"Error parsing OHLC candle: {e}")
+                            # Don't add malformed data to ohlc_data list
 
-                return WebSocketMessage(
-                    type=msg_type,
-                    channel="ohlc",
-                    data=ohlc_data
-                )
+                return WebSocketMessage(type=msg_type, channel="ohlc", data=ohlc_data)
 
             # Handle error messages
             if "error" in data:
                 return WebSocketMessage(
-                    type="error",
-                    channel="ohlc",
-                    data=None,
-                    error=data["error"]
+                    type="error", channel="ohlc", data=None, error=data["error"]
                 )
 
             # Handle heartbeat - server status message, no response needed
@@ -145,6 +137,5 @@ class KrakenOHLCHandler(BaseWebSocketHandler):
         for sub_key, sub_info in self.subscriptions.copy().items():
             if sub_info["symbols"]:
                 await self.subscribe(
-                    symbols=sub_info["symbols"],
-                    snapshot=sub_info["snapshot"]
+                    symbols=sub_info["symbols"], snapshot=sub_info["snapshot"]
                 )

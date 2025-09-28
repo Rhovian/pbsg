@@ -1,4 +1,14 @@
-from sqlalchemy import Column, String, Numeric, Integer, DateTime, Index, text, Float, Boolean
+from sqlalchemy import (
+    Column,
+    String,
+    Numeric,
+    Integer,
+    DateTime,
+    Index,
+    text,
+    Float,
+    Boolean,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
@@ -7,6 +17,7 @@ from .database import Base
 
 class OHLCBase:
     """Base class for OHLC models with common columns"""
+
     time = Column(DateTime(timezone=True), primary_key=True, nullable=False)
     symbol = Column(String, primary_key=True, nullable=False)
     timeframe = Column(String, primary_key=True, nullable=False)
@@ -22,8 +33,8 @@ class BTCOHLC(Base, OHLCBase):
     __tablename__ = "btc_ohlc"
 
     __table_args__ = (
-        Index('idx_btc_ohlc_symbol_time', 'symbol', 'time'),
-        Index('idx_btc_ohlc_timeframe_time', 'timeframe', 'time'),
+        Index("idx_btc_ohlc_symbol_time", "symbol", "time"),
+        Index("idx_btc_ohlc_timeframe_time", "timeframe", "time"),
     )
 
     def __repr__(self):
@@ -34,8 +45,8 @@ class ETHOHLC(Base, OHLCBase):
     __tablename__ = "eth_ohlc"
 
     __table_args__ = (
-        Index('idx_eth_ohlc_symbol_time', 'symbol', 'time'),
-        Index('idx_eth_ohlc_timeframe_time', 'timeframe', 'time'),
+        Index("idx_eth_ohlc_symbol_time", "symbol", "time"),
+        Index("idx_eth_ohlc_timeframe_time", "timeframe", "time"),
     )
 
     def __repr__(self):
@@ -46,8 +57,8 @@ class SOLOHLC(Base, OHLCBase):
     __tablename__ = "sol_ohlc"
 
     __table_args__ = (
-        Index('idx_sol_ohlc_symbol_time', 'symbol', 'time'),
-        Index('idx_sol_ohlc_timeframe_time', 'timeframe', 'time'),
+        Index("idx_sol_ohlc_symbol_time", "symbol", "time"),
+        Index("idx_sol_ohlc_timeframe_time", "timeframe", "time"),
     )
 
     def __repr__(self):
@@ -57,14 +68,16 @@ class SOLOHLC(Base, OHLCBase):
 def get_ohlc_model(symbol: str):
     """Get the appropriate OHLC model for a symbol"""
     models = {
-        'BTC/USD': BTCOHLC,
-        'ETH/USD': ETHOHLC,
-        'SOL/USD': SOLOHLC,
+        "BTC/USD": BTCOHLC,
+        "ETH/USD": ETHOHLC,
+        "SOL/USD": SOLOHLC,
     }
     return models.get(symbol)
 
 
-def create_hypertables(engine, symbol_prefixes: list = None, include_indicators: bool = False):
+def create_hypertables(
+    engine, symbol_prefixes: list = None, include_indicators: bool = False
+):
     """
     Convert OHLC tables to TimescaleDB hypertables after creation
     Call this after create_all()
@@ -75,24 +88,28 @@ def create_hypertables(engine, symbol_prefixes: list = None, include_indicators:
         create_hypertables(engine, include_indicators=True)  # Include indicators table
     """
     if symbol_prefixes is None:
-        symbol_prefixes = ['btc', 'eth', 'sol']
+        symbol_prefixes = ["btc", "eth", "sol"]
 
     with engine.connect() as conn:
         for prefix in symbol_prefixes:
             table_name = f"{prefix.lower()}_ohlc"
-            conn.execute(text(
-                f"SELECT create_hypertable('{table_name}', 'time', "
-                f"if_not_exists => TRUE, chunk_time_interval => INTERVAL '1 day')"
-            ))
+            conn.execute(
+                text(
+                    f"SELECT create_hypertable('{table_name}', 'time', "
+                    f"if_not_exists => TRUE, chunk_time_interval => INTERVAL '1 day')"
+                )
+            )
             conn.commit()
             print(f"✅ Created hypertable for {table_name}")
 
         # Optionally make indicators table a hypertable (usually not needed)
         if include_indicators:
-            conn.execute(text(
-                "SELECT create_hypertable('indicators', 'time', "
-                "if_not_exists => TRUE, chunk_time_interval => INTERVAL '7 days')"
-            ))
+            conn.execute(
+                text(
+                    "SELECT create_hypertable('indicators', 'time', "
+                    "if_not_exists => TRUE, chunk_time_interval => INTERVAL '7 days')"
+                )
+            )
             conn.commit()
             print("✅ Created hypertable for indicators")
 
@@ -102,6 +119,7 @@ class PointIndicator(Base):
     Point-in-time indicators (RSI, MACD, Moving Averages, etc.)
     Typically only keep recent values, updated frequently
     """
+
     __tablename__ = "point_indicators"
 
     time = Column(DateTime(timezone=True), primary_key=True, nullable=False)
@@ -111,8 +129,8 @@ class PointIndicator(Base):
     value = Column(JSONB, nullable=False)
 
     __table_args__ = (
-        Index('idx_point_indicators_symbol_time', 'symbol', 'time'),
-        Index('idx_point_indicators_indicator', 'indicator'),
+        Index("idx_point_indicators_symbol_time", "symbol", "time"),
+        Index("idx_point_indicators_indicator", "indicator"),
     )
 
     def __repr__(self):
@@ -124,6 +142,7 @@ class RangeIndicator(Base):
     Range/level indicators that persist until invalidated
     (FVGs, Support/Resistance levels, Supply/Demand zones, etc.)
     """
+
     __tablename__ = "range_indicators"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -139,9 +158,9 @@ class RangeIndicator(Base):
     extra_data = Column(JSONB)  # Additional context
 
     __table_args__ = (
-        Index('idx_range_indicators_symbol', 'symbol'),
-        Index('idx_range_indicators_active', 'symbol', 'invalidated'),
-        Index('idx_range_indicators_created', 'created_at'),
+        Index("idx_range_indicators_symbol", "symbol"),
+        Index("idx_range_indicators_active", "symbol", "invalidated"),
+        Index("idx_range_indicators_created", "created_at"),
     )
 
     def __repr__(self):
@@ -153,6 +172,7 @@ class VolumeProfile(Base):
     Volume profiles showing distribution of volume across price levels
     Used for identifying high-volume nodes, POC, and value areas
     """
+
     __tablename__ = "volume_profiles"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -170,15 +190,17 @@ class VolumeProfile(Base):
     total_volume = Column(Numeric(18, 8))  # Total volume in profile
 
     # Profile configuration
-    price_step = Column(Numeric(18, 8))  # Price increment between levels (e.g., 10, 100)
+    price_step = Column(
+        Numeric(18, 8)
+    )  # Price increment between levels (e.g., 10, 100)
     num_levels = Column(Integer)  # Number of price levels in profile
 
     # Full distribution - array of {price: float, volume: float, percentage: float}
     profile_data = Column(JSONB, nullable=False)
 
     __table_args__ = (
-        Index('idx_volume_profiles_symbol_period', 'symbol', 'period_end'),
-        Index('idx_volume_profiles_timeframe', 'timeframe'),
+        Index("idx_volume_profiles_symbol_period", "symbol", "period_end"),
+        Index("idx_volume_profiles_timeframe", "timeframe"),
     )
 
     def __repr__(self):
@@ -197,8 +219,8 @@ class Signal(Base):
     context = Column(JSONB)  # Additional context about the signal
 
     __table_args__ = (
-        Index('idx_signals_created', 'created_at'),
-        Index('idx_signals_symbol', 'symbol'),
+        Index("idx_signals_created", "created_at"),
+        Index("idx_signals_symbol", "symbol"),
     )
 
     def __repr__(self):

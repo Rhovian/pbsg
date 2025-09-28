@@ -22,12 +22,12 @@ class DuplicateDetector:
 
     def is_duplicate(self, ohlc: OHLCData) -> bool:
         """Check if we've already seen this exact record"""
-        key = (ohlc.symbol, ohlc.interval_begin, '15m')
+        key = (ohlc.symbol, ohlc.interval_begin, "15m")
         return key in self.cache
 
     def mark_seen(self, ohlc: OHLCData) -> None:
         """Mark this record as seen"""
-        key = (ohlc.symbol, ohlc.interval_begin, '15m')
+        key = (ohlc.symbol, ohlc.interval_begin, "15m")
 
         # Remove oldest if cache is full
         if len(self.cache_order) == self.cache_order.maxlen and self.cache_order:
@@ -77,9 +77,11 @@ class StorageHealthMonitor:
     def get_status(self) -> dict:
         """Get current health status"""
         return {
-            'healthy': self.is_healthy,
-            'consecutive_failures': self.consecutive_failures,
-            'time_since_last_success': (datetime.now() - self.last_success).total_seconds()
+            "healthy": self.is_healthy,
+            "consecutive_failures": self.consecutive_failures,
+            "time_since_last_success": (
+                datetime.now() - self.last_success
+            ).total_seconds(),
         }
 
 
@@ -100,10 +102,10 @@ class SimpleBackpressureController:
 
         # Stats
         self.stats = {
-            'duplicates_dropped': 0,
-            'storage_failures': 0,
-            'pause_events': 0,
-            'total_processed': 0
+            "duplicates_dropped": 0,
+            "storage_failures": 0,
+            "pause_events": 0,
+            "total_processed": 0,
         }
 
     def should_accept_data(self, ohlc: OHLCData) -> bool:
@@ -112,10 +114,10 @@ class SimpleBackpressureController:
 
         Returns False only for duplicates - we don't drop real data
         """
-        self.stats['total_processed'] += 1
+        self.stats["total_processed"] += 1
 
         if self.duplicate_detector.is_duplicate(ohlc):
-            self.stats['duplicates_dropped'] += 1
+            self.stats["duplicates_dropped"] += 1
             logger.debug(f"Dropping duplicate: {ohlc.symbol} @ {ohlc.interval_begin}")
             return False
 
@@ -135,7 +137,7 @@ class SimpleBackpressureController:
                 await self._resume_ingestion()
 
         else:
-            self.stats['storage_failures'] += 1
+            self.stats["storage_failures"] += 1
             self.health_monitor.record_failure()
 
             # Check if we should pause or fail
@@ -152,7 +154,7 @@ class SimpleBackpressureController:
             return
 
         self.is_paused = True
-        self.stats['pause_events'] += 1
+        self.stats["pause_events"] += 1
 
         logger.warning("Pausing data ingestion - storage health degraded")
 
@@ -208,6 +210,6 @@ class SimpleBackpressureController:
         """Get current statistics"""
         return {
             **self.stats,
-            'health': self.health_monitor.get_status(),
-            'is_paused': self.is_paused
+            "health": self.health_monitor.get_status(),
+            "is_paused": self.is_paused,
         }

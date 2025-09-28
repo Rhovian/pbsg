@@ -112,11 +112,15 @@ class BaseWebSocketHandler(ABC):
     async def _handle_reconnection(self) -> None:
         """Handle reconnection logic"""
         if self.reconnect_attempts >= self.max_reconnect_attempts:
-            logger.error(f"Max reconnection attempts reached ({self.max_reconnect_attempts})")
+            logger.error(
+                f"Max reconnection attempts reached ({self.max_reconnect_attempts})"
+            )
             return
 
         self.reconnect_attempts += 1
-        logger.info(f"Reconnection attempt {self.reconnect_attempts}/{self.max_reconnect_attempts}")
+        logger.info(
+            f"Reconnection attempt {self.reconnect_attempts}/{self.max_reconnect_attempts}"
+        )
 
         await asyncio.sleep(self.reconnect_delay)
         await self.connect()

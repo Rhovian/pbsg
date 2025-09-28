@@ -1,6 +1,7 @@
 """
 Unit tests for KrakenToTimescaleTransformer
 """
+
 import pytest
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -26,7 +27,7 @@ class TestKrakenToTimescaleTransformer:
             trades=150,
             volume=Decimal("1234.56789"),
             interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-            interval=15
+            interval=15,
         )
 
     def test_transform_btc(self, sample_ohlc_data):
@@ -56,7 +57,7 @@ class TestKrakenToTimescaleTransformer:
             trades=100,
             volume=Decimal("500.123"),
             interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-            interval=15
+            interval=15,
         )
 
         result = KrakenToTimescaleTransformer.transform(ohlc_data)
@@ -77,7 +78,7 @@ class TestKrakenToTimescaleTransformer:
             trades=50,
             volume=Decimal("1000.0"),
             interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-            interval=15
+            interval=15,
         )
 
         result = KrakenToTimescaleTransformer.transform(ohlc_data)
@@ -98,7 +99,7 @@ class TestKrakenToTimescaleTransformer:
             trades=10,
             volume=Decimal("10000.0"),
             interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-            interval=15
+            interval=15,
         )
 
         result = KrakenToTimescaleTransformer.transform(ohlc_data)
@@ -117,7 +118,7 @@ class TestKrakenToTimescaleTransformer:
                 trades=150,
                 volume=Decimal("1234.56789"),
                 interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-                interval=15
+                interval=15,
             ),
             OHLCData(
                 symbol="ETH/USD",
@@ -129,7 +130,7 @@ class TestKrakenToTimescaleTransformer:
                 trades=100,
                 volume=Decimal("500.123"),
                 interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-                interval=15
+                interval=15,
             ),
             OHLCData(
                 symbol="DOGE/USD",  # Unsupported
@@ -141,8 +142,8 @@ class TestKrakenToTimescaleTransformer:
                 trades=10,
                 volume=Decimal("10000.0"),
                 interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-                interval=15
-            )
+                interval=15,
+            ),
         ]
 
         results = KrakenToTimescaleTransformer.transform_batch(ohlc_list)
@@ -192,7 +193,7 @@ class TestKrakenToTimescaleTransformer:
             trades=150,
             volume=Decimal("1234.56789012"),
             interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-            interval=15
+            interval=15,
         )
 
         result = KrakenToTimescaleTransformer.transform(ohlc_data)
@@ -215,7 +216,7 @@ class TestKrakenToTimescaleTransformer:
             trades=0,
             volume=Decimal("0.0"),
             interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-            interval=15
+            interval=15,
         )
 
         result = KrakenToTimescaleTransformer.transform(ohlc_data)
@@ -227,18 +228,21 @@ class TestKrakenToTimescaleTransformer:
     def test_symbol_model_map_completeness(self):
         """Test that SYMBOL_MODEL_MAP matches expected models"""
         expected_mapping = {
-            'BTC/USD': BTCOHLC,
-            'ETH/USD': ETHOHLC,
-            'SOL/USD': SOLOHLC,
+            "BTC/USD": BTCOHLC,
+            "ETH/USD": ETHOHLC,
+            "SOL/USD": SOLOHLC,
         }
 
         assert KrakenToTimescaleTransformer.SYMBOL_MODEL_MAP == expected_mapping
 
-    @pytest.mark.parametrize("symbol,expected_model", [
-        ("BTC/USD", BTCOHLC),
-        ("ETH/USD", ETHOHLC),
-        ("SOL/USD", SOLOHLC),
-    ])
+    @pytest.mark.parametrize(
+        "symbol,expected_model",
+        [
+            ("BTC/USD", BTCOHLC),
+            ("ETH/USD", ETHOHLC),
+            ("SOL/USD", SOLOHLC),
+        ],
+    )
     def test_transform_returns_correct_model(self, symbol, expected_model):
         """Test that transform returns the correct model type"""
         ohlc_data = OHLCData(
@@ -251,7 +255,7 @@ class TestKrakenToTimescaleTransformer:
             trades=50,
             volume=Decimal("1000.0"),
             interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-            interval=15
+            interval=15,
         )
 
         result = KrakenToTimescaleTransformer.transform(ohlc_data)
@@ -270,7 +274,7 @@ class TestKrakenToTimescaleTransformer:
                 trades=100,
                 volume=Decimal("500.123"),
                 interval_begin=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-                interval=15
+                interval=15,
             ),
             OHLCData(
                 symbol="BTC/USD",
@@ -282,7 +286,7 @@ class TestKrakenToTimescaleTransformer:
                 trades=150,
                 volume=Decimal("1234.56789"),
                 interval_begin=datetime(2024, 1, 1, 12, 15, 0, tzinfo=timezone.utc),
-                interval=15
+                interval=15,
             ),
             OHLCData(
                 symbol="SOL/USD",
@@ -294,8 +298,8 @@ class TestKrakenToTimescaleTransformer:
                 trades=50,
                 volume=Decimal("1000.0"),
                 interval_begin=datetime(2024, 1, 1, 12, 30, 0, tzinfo=timezone.utc),
-                interval=15
-            )
+                interval=15,
+            ),
         ]
 
         results = KrakenToTimescaleTransformer.transform_batch(ohlc_list)

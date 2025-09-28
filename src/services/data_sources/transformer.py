@@ -15,9 +15,9 @@ class KrakenToTimescaleTransformer:
 
     # Map Kraken symbols to database models
     SYMBOL_MODEL_MAP: Dict[str, Type[OHLCBase]] = {
-        'BTC/USD': BTCOHLC,
-        'ETH/USD': ETHOHLC,
-        'SOL/USD': SOLOHLC,
+        "BTC/USD": BTCOHLC,
+        "ETH/USD": ETHOHLC,
+        "SOL/USD": SOLOHLC,
     }
 
     @classmethod
@@ -41,13 +41,13 @@ class KrakenToTimescaleTransformer:
         return model_class(
             time=ohlc_data.interval_begin,
             symbol=ohlc_data.symbol,
-            timeframe='15m',  # Fixed 15-minute timeframe
+            timeframe="15m",  # Fixed 15-minute timeframe
             open=ohlc_data.open,
             high=ohlc_data.high,
             low=ohlc_data.low,
             close=ohlc_data.close,
             volume=ohlc_data.volume,
-            trades=ohlc_data.trades
+            trades=ohlc_data.trades,
         )
 
     @classmethod
@@ -80,15 +80,15 @@ class KrakenToTimescaleTransformer:
             Dictionary representation for database insert
         """
         return {
-            'time': ohlc_data.interval_begin,
-            'symbol': ohlc_data.symbol,
-            'timeframe': '15m',
-            'open': ohlc_data.open,
-            'high': ohlc_data.high,
-            'low': ohlc_data.low,
-            'close': ohlc_data.close,
-            'volume': ohlc_data.volume,
-            'trades': ohlc_data.trades
+            "time": ohlc_data.interval_begin,
+            "symbol": ohlc_data.symbol,
+            "timeframe": "15m",
+            "open": ohlc_data.open,
+            "high": ohlc_data.high,
+            "low": ohlc_data.low,
+            "close": ohlc_data.close,
+            "volume": ohlc_data.volume,
+            "trades": ohlc_data.trades,
         }
 
     @classmethod
@@ -103,9 +103,9 @@ class KrakenToTimescaleTransformer:
             Table name or None if symbol not supported
         """
         symbol_map = {
-            'BTC/USD': 'btc_ohlc',
-            'ETH/USD': 'eth_ohlc',
-            'SOL/USD': 'sol_ohlc',
+            "BTC/USD": "btc_ohlc",
+            "ETH/USD": "eth_ohlc",
+            "SOL/USD": "sol_ohlc",
         }
         return symbol_map.get(symbol)
 

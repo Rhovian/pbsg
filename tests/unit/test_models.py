@@ -1,6 +1,7 @@
 """
 Unit tests for database models
 """
+
 import pytest
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -15,7 +16,7 @@ from src.models.schema import (
     PointIndicator,
     RangeIndicator,
     VolumeProfile,
-    Signal
+    Signal,
 )
 
 
@@ -38,7 +39,7 @@ class TestOHLCModels:
             low=Decimal("49500.00"),
             close=Decimal("50500.00"),
             volume=Decimal("1234.56789"),
-            trades=150
+            trades=150,
         )
 
         assert btc.time == sample_time
@@ -57,7 +58,7 @@ class TestOHLCModels:
             time=sample_time,
             symbol="BTC/USD",
             timeframe="15m",
-            close=Decimal("50500.00")
+            close=Decimal("50500.00"),
         )
 
         repr_str = repr(btc)
@@ -76,7 +77,7 @@ class TestOHLCModels:
             low=Decimal("2950.00"),
             close=Decimal("3050.00"),
             volume=Decimal("500.123"),
-            trades=100
+            trades=100,
         )
 
         assert eth.symbol == "ETH/USD"
@@ -88,7 +89,7 @@ class TestOHLCModels:
             time=sample_time,
             symbol="ETH/USD",
             timeframe="15m",
-            close=Decimal("3050.00")
+            close=Decimal("3050.00"),
         )
 
         repr_str = repr(eth)
@@ -107,7 +108,7 @@ class TestOHLCModels:
             low=Decimal("98.00"),
             close=Decimal("102.00"),
             volume=Decimal("1000.0"),
-            trades=50
+            trades=50,
         )
 
         assert sol.symbol == "SOL/USD"
@@ -116,10 +117,7 @@ class TestOHLCModels:
     def test_sol_ohlc_repr(self, sample_time):
         """Test SOLOHLC string representation"""
         sol = SOLOHLC(
-            time=sample_time,
-            symbol="SOL/USD",
-            timeframe="15m",
-            close=Decimal("102.00")
+            time=sample_time, symbol="SOL/USD", timeframe="15m", close=Decimal("102.00")
         )
 
         repr_str = repr(sol)
@@ -145,7 +143,7 @@ class TestOHLCModels:
         btc = BTCOHLC(
             time=sample_time,
             symbol="BTC/USD",
-            timeframe="15m"
+            timeframe="15m",
             # All OHLC values are nullable
         )
 
@@ -231,7 +229,7 @@ class TestPointIndicator:
             symbol="BTC/USD",
             timeframe="15m",
             indicator="RSI",
-            value={"rsi": 65.5, "signal": "overbought"}
+            value={"rsi": 65.5, "signal": "overbought"},
         )
 
         assert indicator.time == sample_time
@@ -247,7 +245,7 @@ class TestPointIndicator:
             symbol="BTC/USD",
             timeframe="15m",
             indicator="RSI",
-            value={"rsi": 65.5}
+            value={"rsi": 65.5},
         )
 
         repr_str = repr(indicator)
@@ -273,7 +271,7 @@ class TestRangeIndicator:
             range_low=Decimal("50000.00"),
             strength=0.85,
             invalidated=False,
-            metadata={"touches": 3, "first_touch": "2024-01-01"}
+            metadata={"touches": 3, "first_touch": "2024-01-01"},
         )
 
         assert indicator.symbol == "BTC/USD"
@@ -291,7 +289,7 @@ class TestRangeIndicator:
             symbol="ETH/USD",
             indicator="FVG",
             range_high=Decimal("3100.00"),
-            range_low=Decimal("3000.00")
+            range_low=Decimal("3000.00"),
         )
 
         repr_str = repr(indicator)
@@ -310,7 +308,7 @@ class TestRangeIndicator:
             range_high=Decimal("52000.00"),
             range_low=Decimal("51000.00"),
             invalidated=True,
-            invalidated_at=now
+            invalidated_at=now,
         )
 
         assert indicator.invalidated is True
@@ -343,8 +341,8 @@ class TestVolumeProfile:
             num_levels=20,
             profile_data=[
                 {"price": 50000, "volume": 1000, "percentage": 6.67},
-                {"price": 50100, "volume": 1500, "percentage": 10.00}
-            ]
+                {"price": 50100, "volume": 1500, "percentage": 10.00},
+            ],
         )
 
         assert profile.symbol == "BTC/USD"
@@ -370,7 +368,7 @@ class TestVolumeProfile:
             period_start=start,
             period_end=end,
             poc_price=Decimal("3050.00"),
-            profile_data=[]
+            profile_data=[],
         )
 
         repr_str = repr(profile)
@@ -393,11 +391,7 @@ class TestSignal:
             timeframe="15m",
             signal_type="BUY",
             confidence=0.85,
-            context={
-                "rsi": 30,
-                "macd_cross": "bullish",
-                "volume": "above_average"
-            }
+            context={"rsi": 30, "macd_cross": "bullish", "volume": "above_average"},
         )
 
         assert signal.symbol == "BTC/USD"
@@ -409,12 +403,7 @@ class TestSignal:
 
     def test_signal_repr(self):
         """Test Signal string representation"""
-        signal = Signal(
-            id=123,
-            symbol="ETH/USD",
-            signal_type="SELL",
-            confidence=0.75
-        )
+        signal = Signal(id=123, symbol="ETH/USD", signal_type="SELL", confidence=0.75)
 
         repr_str = repr(signal)
         assert "Signal" in repr_str
@@ -425,11 +414,7 @@ class TestSignal:
 
     def test_signal_default_created_at(self):
         """Test Signal default created_at"""
-        signal = Signal(
-            symbol="BTC/USD",
-            timeframe="1h",
-            signal_type="ALERT"
-        )
+        signal = Signal(symbol="BTC/USD", timeframe="1h", signal_type="ALERT")
 
         # created_at should be set by default function
         # We can't test exact value but can verify it's None here
@@ -444,10 +429,7 @@ class TestSignal:
     def test_signal_types(self, signal_type):
         """Test different signal types"""
         signal = Signal(
-            symbol="BTC/USD",
-            timeframe="15m",
-            signal_type=signal_type,
-            confidence=0.5
+            symbol="BTC/USD", timeframe="15m", signal_type=signal_type, confidence=0.5
         )
 
         assert signal.signal_type == signal_type
