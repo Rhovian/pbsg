@@ -3,7 +3,7 @@ UV_RUN = uv run
 PYTHON_SCRIPT = PYTHONPATH=. $(UV_RUN) scripts/python
 PYTEST = $(UV_RUN) python -m pytest
 
-.PHONY: test-integration test-unit test-e2e test-e2e-clean test-all clean-db setup-db seed-db format lint check dash
+.PHONY: test-integration test-unit test-e2e test-e2e-clean test-all clean-db setup-db seed-db format lint check dash backfill
 
 # Database management
 clean-db:
@@ -44,3 +44,7 @@ check: lint
 dash:
 	@echo "🚀 Starting Dash dashboard..."
 	PYTHONPATH=. $(UV_RUN) python -c "from src.services.dash_service import DashService; DashService(debug=True).run()"
+
+# Backfill historical data
+backfill:
+	$(PYTHON_SCRIPT)/kraken_backfill.py

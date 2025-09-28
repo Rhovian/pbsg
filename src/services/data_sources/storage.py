@@ -182,6 +182,7 @@ class IntegratedOHLCStorage:
 
         # Store old intervals immediately
         stored_count = 0
+        storage_failed = False
         if immediate_store:
             try:
                 success_count, failed_count, _ = self.storage.store_batch(
@@ -195,9 +196,18 @@ class IntegratedOHLCStorage:
             except Exception as e:
                 logger.error(f"Immediate storage failed: {e}")
                 rejected_count += len(immediate_store)
+                storage_failed = True
                 await self.backpressure.handle_storage_result(success=False)
 
-        total_processed = stored_count + buffered_count
+        # If storage infrastructure failed, don't count buffered items as processed
+        if storage_failed:
+            # Storage failed completely - return buffered items back to rejected
+            rejected_count += buffered_count
+            # Don't count buffered items since we can't trust the storage system
+            total_processed = 0
+        else:
+            total_processed = stored_count + buffered_count
+
         return total_processed, rejected_count, len(ohlc_data_list)
 
     async def _flush_old_intervals(self) -> None:
@@ -236,6 +246,7 @@ class IntegratedOHLCStorage:
 
             except Exception as e:
                 logger.error(f"Failed to flush intervals: {e}")
+                # Don't remove items from buffer since storage failed
                 await self.backpressure.handle_storage_result(success=False)
 
     async def force_flush_all(self) -> int:
@@ -254,7 +265,7 @@ class IntegratedOHLCStorage:
 
             logger.info(f"Force flushed {success_count} intervals to database")
 
-            # Clear the buffer
+            # Clear the buffer only if storage succeeded
             for key in keys_to_remove:
                 del self.interval_buffer[key]
 
@@ -263,6 +274,7 @@ class IntegratedOHLCStorage:
 
         except Exception as e:
             logger.error(f"Failed to force flush intervals: {e}")
+            # Don't clear buffer since storage failed
             await self.backpressure.handle_storage_result(success=False)
             return 0
 
