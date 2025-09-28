@@ -154,6 +154,42 @@ Gap: Missing 10:30 candle (15-minute interval)
 
 ---
 
+## Configuration
+
+### Environment Variables Not Loaded (Priority: High)
+
+**Issue**: The application does not currently load environment variables from the `.env` file, causing configuration issues and potential runtime failures.
+
+**Current State**:
+- ✅ `.env.example` file exists with proper template
+- ✅ `python-dotenv` dependency installed
+- ❌ No actual loading of `.env` file in application startup
+- ❌ Configuration may fall back to defaults or fail
+
+**Impact**:
+- Database connections may fail if credentials not set in environment
+- API keys and sensitive configuration not properly loaded
+- Development environment setup incomplete
+- Production deployments may require manual environment variable setup
+
+**Root Cause**:
+- Missing `load_dotenv()` call in application initialization
+- Configuration module not importing environment variables properly
+
+**Solution**:
+```python
+# Add to main.py or config/__init__.py
+from dotenv import load_dotenv
+load_dotenv()  # Load .env file before other imports
+```
+
+**Related Files**:
+- `.env.example` - Environment variable template
+- `src/config/settings.py` - Configuration management
+- `main.py` - Application entry point
+
+---
+
 ## Performance
 
 ### None Currently Identified
