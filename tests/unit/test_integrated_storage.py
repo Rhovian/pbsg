@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
-from src.services.data_sources.integrated_storage import IntegratedOHLCStorage
+from src.services.data_sources.storage import IntegratedOHLCStorage
 from src.services.data_sources.types import OHLCData
 
 
@@ -364,7 +364,8 @@ class TestTimeDelayedStorage:
     def storage(self, mock_engine):
         """Create IntegratedOHLCStorage with short delay for testing"""
         storage = IntegratedOHLCStorage(
-            engine=mock_engine, storage_delay_minutes=3  # 3 minute delay for testing
+            engine=mock_engine,
+            storage_delay_minutes=3,  # 3 minute delay for testing
         )
         # Mock the underlying storage
         storage.storage.store_batch = MagicMock(return_value=(0, 0, 0))
@@ -394,7 +395,6 @@ class TestTimeDelayedStorage:
 
     async def test_basic_buffering_and_flushing(self, storage):
         """Test basic buffering and time-delayed flushing"""
-        from unittest.mock import patch
         from datetime import datetime, timezone, timedelta
 
         # Set up time progression
@@ -405,7 +405,7 @@ class TestTimeDelayedStorage:
             2025, 1, 1, 12, 15, 0, tzinfo=timezone.utc
         )  # Recent interval (2 min ago)
 
-        with patch("src.services.data_sources.integrated_storage.datetime") as mock_dt:
+        with patch("src.services.data_sources.storage.datetime") as mock_dt:
             # Initially at start_time (interval is very recent, should buffer)
             mock_dt.now.return_value = start_time
             # Make sure datetime.now(timezone.utc) also returns mocked time
@@ -451,7 +451,6 @@ class TestTimeDelayedStorage:
 
     async def test_multiple_intervals_multiple_updates(self, storage):
         """Test multiple intervals with multiple updates each"""
-        from unittest.mock import patch
         from datetime import datetime, timezone, timedelta
 
         start_time = datetime(
@@ -465,7 +464,7 @@ class TestTimeDelayedStorage:
         interval2 = datetime(2025, 1, 1, 12, 30, 0, tzinfo=timezone.utc)  # Future
         interval3 = datetime(2025, 1, 1, 12, 45, 0, tzinfo=timezone.utc)  # Future
 
-        with patch("src.services.data_sources.integrated_storage.datetime") as mock_dt:
+        with patch("src.services.data_sources.storage.datetime") as mock_dt:
             mock_dt.now.side_effect = lambda tz=None: start_time
 
             # === Test interval1 with multiple updates ===
@@ -538,12 +537,11 @@ class TestTimeDelayedStorage:
 
     async def test_force_flush_all(self, storage):
         """Test force flushing all buffered intervals"""
-        from unittest.mock import patch
         from datetime import datetime, timezone
 
         start_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-        with patch("src.services.data_sources.integrated_storage.datetime") as mock_dt:
+        with patch("src.services.data_sources.storage.datetime") as mock_dt:
             mock_dt.now.return_value = start_time
 
             # Create data for multiple intervals
@@ -590,13 +588,12 @@ class TestTimeDelayedStorage:
 
     async def test_old_data_bypasses_buffer(self, storage):
         """Test that very old data bypasses buffer and goes directly to storage"""
-        from unittest.mock import patch
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone
 
         current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         old_interval = datetime(2025, 1, 1, 11, 0, 0, tzinfo=timezone.utc)  # 1 hour old
 
-        with patch("src.services.data_sources.integrated_storage.datetime") as mock_dt:
+        with patch("src.services.data_sources.storage.datetime") as mock_dt:
             mock_dt.now.return_value = current_time
 
             # Configure storage mock
@@ -621,14 +618,13 @@ class TestTimeDelayedStorage:
 
     async def test_mixed_old_and_recent_data(self, storage):
         """Test batch with mix of old and recent data"""
-        from unittest.mock import patch
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone
 
         current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         old_interval = datetime(2025, 1, 1, 11, 0, 0, tzinfo=timezone.utc)  # 1 hour old
         recent_interval = current_time  # Very recent
 
-        with patch("src.services.data_sources.integrated_storage.datetime") as mock_dt:
+        with patch("src.services.data_sources.storage.datetime") as mock_dt:
             mock_dt.now.return_value = current_time
 
             # Configure storage mock
@@ -664,12 +660,11 @@ class TestTimeDelayedStorage:
 
     async def test_comprehensive_stats_with_buffering(self, storage):
         """Test comprehensive statistics include buffering metrics"""
-        from unittest.mock import patch
         from datetime import datetime, timezone
 
         current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-        with patch("src.services.data_sources.integrated_storage.datetime") as mock_dt:
+        with patch("src.services.data_sources.storage.datetime") as mock_dt:
             mock_dt.now.return_value = current_time
 
             # Buffer some data
@@ -715,15 +710,14 @@ class TestTimeDelayedStorage:
 
     async def test_exact_boundary_timing(self, storage):
         """Test edge case: data exactly at 3-minute boundary"""
-        from unittest.mock import patch
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone
 
         current_time = datetime(2025, 1, 1, 12, 18, 0, tzinfo=timezone.utc)
         exact_boundary_time = datetime(
             2025, 1, 1, 12, 15, 0, tzinfo=timezone.utc
         )  # Exactly 3 min old
 
-        with patch("src.services.data_sources.integrated_storage.datetime") as mock_dt:
+        with patch("src.services.data_sources.storage.datetime") as mock_dt:
             mock_dt.now.side_effect = lambda tz=None: current_time
 
             # Configure storage mock
@@ -749,13 +743,12 @@ class TestTimeDelayedStorage:
 
     async def test_storage_failure_during_flush(self, storage):
         """Test handling of storage failures during flush operations"""
-        from unittest.mock import patch
         from datetime import datetime, timezone, timedelta
 
         start_time = datetime(2025, 1, 1, 12, 17, 0, tzinfo=timezone.utc)
         interval_time = datetime(2025, 1, 1, 12, 15, 0, tzinfo=timezone.utc)
 
-        with patch("src.services.data_sources.integrated_storage.datetime") as mock_dt:
+        with patch("src.services.data_sources.storage.datetime") as mock_dt:
             mock_dt.now.side_effect = lambda tz=None: start_time
 
             # Buffer some data
@@ -799,13 +792,12 @@ class TestTimeDelayedStorage:
 
     async def test_buffer_key_conflicts(self, storage):
         """Test buffer key handling with same timestamp, different symbols"""
-        from unittest.mock import patch
         from datetime import datetime, timezone
 
         current_time = datetime(2025, 1, 1, 12, 17, 0, tzinfo=timezone.utc)
         shared_interval = datetime(2025, 1, 1, 12, 15, 0, tzinfo=timezone.utc)
 
-        with patch("src.services.data_sources.integrated_storage.datetime") as mock_dt:
+        with patch("src.services.data_sources.storage.datetime") as mock_dt:
             mock_dt.now.side_effect = lambda tz=None: current_time
 
             # Create data for different symbols at same timestamp
@@ -858,12 +850,11 @@ class TestTimeDelayedStorage:
 
     async def test_empty_buffer_operations(self, storage):
         """Test operations when buffer is empty"""
-        from unittest.mock import patch
         from datetime import datetime, timezone
 
         current_time = datetime(2025, 1, 1, 12, 17, 0, tzinfo=timezone.utc)
 
-        with patch("src.services.data_sources.integrated_storage.datetime") as mock_dt:
+        with patch("src.services.data_sources.storage.datetime") as mock_dt:
             mock_dt.now.side_effect = lambda tz=None: current_time
 
             # Test flush with empty buffer
@@ -888,13 +879,12 @@ class TestTimeDelayedStorage:
 
     async def test_buffer_overwrite_behavior(self, storage):
         """Test detailed buffer overwrite behavior"""
-        from unittest.mock import patch
         from datetime import datetime, timezone
 
         current_time = datetime(2025, 1, 1, 12, 17, 0, tzinfo=timezone.utc)
         interval_time = datetime(2025, 1, 1, 12, 15, 0, tzinfo=timezone.utc)
 
-        with patch("src.services.data_sources.integrated_storage.datetime") as mock_dt:
+        with patch("src.services.data_sources.storage.datetime") as mock_dt:
             mock_dt.now.side_effect = lambda tz=None: current_time
 
             # Store initial data
@@ -931,12 +921,11 @@ class TestTimeDelayedStorage:
 
     async def test_flush_partial_failure(self, storage):
         """Test partial failure during flush (some intervals succeed, some fail)"""
-        from unittest.mock import patch
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone
 
         start_time = datetime(2025, 1, 1, 12, 20, 0, tzinfo=timezone.utc)
 
-        with patch("src.services.data_sources.integrated_storage.datetime") as mock_dt:
+        with patch("src.services.data_sources.storage.datetime") as mock_dt:
             mock_dt.now.side_effect = lambda tz=None: start_time
 
             # Buffer multiple old intervals

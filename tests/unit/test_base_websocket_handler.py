@@ -5,12 +5,11 @@ Unit tests for BaseWebSocketHandler
 import pytest
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch, call
-from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 import websockets
 
 from src.services.data_sources.base import BaseWebSocketHandler
-from src.services.data_sources.types import WebSocketMessage, OHLCData
+from src.services.data_sources.types import WebSocketMessage
 
 
 class ConcreteWebSocketHandler(BaseWebSocketHandler):

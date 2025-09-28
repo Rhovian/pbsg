@@ -5,7 +5,7 @@ Unit tests for database models
 import pytest
 from datetime import datetime, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock
 
 from src.models.schema import (
     BTCOHLC,

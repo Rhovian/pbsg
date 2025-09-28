@@ -3,9 +3,8 @@ Simple backpressure control for low-volume OHLC data streams.
 Focused on infrastructure health rather than complex data prioritization.
 """
 
-import asyncio
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Set, Tuple
 from collections import deque
 from loguru import logger

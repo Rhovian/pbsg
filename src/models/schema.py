@@ -10,7 +10,6 @@ from sqlalchemy import (
     Boolean,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 from .database import Base
 

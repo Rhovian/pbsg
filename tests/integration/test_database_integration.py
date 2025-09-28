@@ -3,26 +3,16 @@ Real TimescaleDB integration tests
 """
 
 import pytest
-import os
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from sqlalchemy import create_engine, select, func
+from sqlalchemy import create_engine, func
 from sqlalchemy.orm import Session
 
 from src.models.schema import (
-    Base,
     BTCOHLC,
-    ETHOHLC,
-    SOLOHLC,
-    PointIndicator,
-    RangeIndicator,
-    VolumeProfile,
-    Signal,
     get_ohlc_model,
-    create_hypertables,
 )
-from src.services.data_sources.transformer import KrakenToTimescaleTransformer
-from src.services.data_sources.integrated_storage import IntegratedOHLCStorage
+from src.services.data_sources.kraken.transformer import KrakenToTimescaleTransformer
+from src.services.data_sources.storage import IntegratedOHLCStorage
 
 
 @pytest.mark.integration
@@ -54,7 +44,9 @@ class TestTimescaleDBIntegration:
         """Test TimescaleDB hypertable-specific functionality"""
         # Generate time-series data
         btc_data = seed_generator.generate_market_scenario(
-            scenario="normal", symbol="BTC/USD", duration_minutes=240  # 4 hours of data
+            scenario="normal",
+            symbol="BTC/USD",
+            duration_minutes=240,  # 4 hours of data
         )
 
         # Transform and store data

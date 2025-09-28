@@ -3,11 +3,9 @@ Transformer to convert Kraken OHLC data to TimescaleDB format
 """
 
 from typing import Optional, Type, Dict, Any
-from datetime import datetime
-from decimal import Decimal
 
-from src.models.schema import BTCOHLC, ETHOHLC, SOLOHLC, OHLCBase, get_ohlc_model
-from .types import OHLCData
+from src.models.schema import BTCOHLC, ETHOHLC, SOLOHLC, OHLCBase
+from ..types import OHLCData
 
 
 class KrakenToTimescaleTransformer:

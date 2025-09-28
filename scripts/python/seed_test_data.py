@@ -2,10 +2,10 @@
 """
 Seed test database with sample data
 """
-import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-from src.services.data_sources.transformer import KrakenToTimescaleTransformer
+from src.services.data_sources.kraken.transformer import KrakenToTimescaleTransformer
 from tests.conftest import SeedDataGenerator
 
 

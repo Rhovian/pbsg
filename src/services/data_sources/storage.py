@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .backpressure import SimpleBackpressureController
 from .types import OHLCData
-from .transformer import KrakenToTimescaleTransformer
+from .kraken.transformer import KrakenToTimescaleTransformer
 
 
 class OHLCStorage:
@@ -128,9 +128,9 @@ class IntegratedOHLCStorage:
 
         # Time-delayed storage
         self.storage_delay = timedelta(minutes=storage_delay_minutes)
-        self.interval_buffer: Dict[Tuple[str, datetime], OHLCData] = (
-            {}
-        )  # (symbol, timestamp) -> latest_data
+        self.interval_buffer: Dict[
+            Tuple[str, datetime], OHLCData
+        ] = {}  # (symbol, timestamp) -> latest_data
 
         # Combined stats
         self.total_accepted = 0

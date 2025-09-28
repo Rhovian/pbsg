@@ -2,7 +2,7 @@
 """
 Setup test database schema and seed data
 """
-import os
+
 from src.models.schema import Base, create_hypertables
 from sqlalchemy import create_engine
 

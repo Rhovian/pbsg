@@ -1,6 +1,5 @@
 import asyncio
 import asyncpg
-from sqlalchemy import text
 import sys
 import os
 
@@ -8,13 +7,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.database import engine, Base
 from models.schema import (
-    BTCOHLC,
-    ETHOHLC,
-    SOLOHLC,
-    PointIndicator,
-    RangeIndicator,
-    VolumeProfile,
-    Signal,
     create_hypertables,
 )
 from loguru import logger

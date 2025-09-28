@@ -1,9 +1,9 @@
 import json
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from loguru import logger
 
-from .base import BaseWebSocketHandler
-from .types import OHLCData, OHLCInterval, WebSocketMessage
+from ..base import BaseWebSocketHandler
+from ..types import OHLCData, WebSocketMessage
 
 
 class KrakenOHLCHandler(BaseWebSocketHandler):

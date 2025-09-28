@@ -3,6 +3,7 @@
 End-to-end test: Live Kraken websocket data to TimescaleDB
 Tests the complete pipeline from live data source to database storage.
 """
+
 import asyncio
 import signal
 import sys
@@ -12,9 +13,8 @@ from sqlalchemy import create_engine, func
 from sqlalchemy.orm import Session
 
 from src.services.data_sources.kraken import KrakenOHLCHandler
-from src.services.data_sources.transformer import KrakenToTimescaleTransformer
-from src.services.data_sources.integrated_storage import IntegratedOHLCStorage
-from src.models.schema import Base, create_hypertables, BTCOHLC
+from src.services.data_sources.storage import IntegratedOHLCStorage
+from src.models.schema import BTCOHLC
 
 
 class KrakenE2ETest:
@@ -68,13 +68,14 @@ class KrakenE2ETest:
                 and message.type in ["snapshot", "update"]
                 and message.channel == "ohlc"
             ):
-
                 self.messages_received += 1
 
                 # Use production storage pipeline
-                success_count, failed_count, total_count = (
-                    await self.storage.store_batch(message.data)
-                )
+                (
+                    success_count,
+                    failed_count,
+                    total_count,
+                ) = await self.storage.store_batch(message.data)
                 self.records_stored += success_count
                 # Don't count rejected duplicates as errors - this is expected for real-time data
                 # self.errors += failed_count
@@ -86,7 +87,7 @@ class KrakenE2ETest:
                         "✅ STORED/BUFFERED" if i < success_count else "❌ REJECTED"
                     )
                     print(
-                        f"      [{i+1}] {ohlc_data.symbol} @ {ohlc_data.interval_begin} = ${ohlc_data.close} | Vol: {ohlc_data.volume} | Trades: {ohlc_data.trades} | {status}"
+                        f"      [{i + 1}] {ohlc_data.symbol} @ {ohlc_data.interval_begin} = ${ohlc_data.close} | Vol: {ohlc_data.volume} | Trades: {ohlc_data.trades} | {status}"
                     )
 
                 # Show storage stats
@@ -114,7 +115,7 @@ class KrakenE2ETest:
             print("   ✅ Connected!")
 
             # Subscribe to OHLC data
-            print(f"📡 Subscribing to OHLC data...")
+            print("📡 Subscribing to OHLC data...")
             await self.handler.subscribe(self.test_symbols, snapshot=True)
             print("   ✅ Subscribed!")
 
@@ -186,10 +187,12 @@ class KrakenE2ETest:
             print(f"Stats error:        {e}")
 
         if duration > 0:
-            print(f"Message rate:       {self.messages_received/duration:.1f} msg/sec")
+            print(
+                f"Message rate:       {self.messages_received / duration:.1f} msg/sec"
+            )
             if self.records_stored > 0:
                 print(
-                    f"Process rate:       {self.records_stored/duration:.1f} records/sec"
+                    f"Process rate:       {self.records_stored / duration:.1f} records/sec"
                 )
 
         # Check database for stored data

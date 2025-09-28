@@ -6,7 +6,7 @@ import pytest
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from src.services.data_sources.transformer import KrakenToTimescaleTransformer
+from src.services.data_sources.kraken.transformer import KrakenToTimescaleTransformer
 from src.services.data_sources.types import OHLCData
 from src.models.schema import BTCOHLC, ETHOHLC, SOLOHLC
 

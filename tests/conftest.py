@@ -4,15 +4,13 @@ Global pytest fixtures and configuration for all tests
 
 import pytest
 import asyncio
-import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import List, Dict, Any, Optional
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock
 import random
 
-from src.services.data_sources.types import OHLCData, WebSocketMessage
-from src.models.schema import BTCOHLC, ETHOHLC, SOLOHLC
+from src.services.data_sources.types import OHLCData
 
 
 @pytest.fixture(scope="session")

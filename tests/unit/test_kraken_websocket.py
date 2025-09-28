@@ -4,12 +4,11 @@ Unit tests for KrakenOHLCHandler
 
 import pytest
 import json
-from unittest.mock import AsyncMock, patch, call
-from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 from decimal import Decimal
 
 from src.services.data_sources.kraken import KrakenOHLCHandler
-from src.services.data_sources.types import OHLCData, WebSocketMessage
+from src.services.data_sources.types import OHLCData
 
 
 class TestKrakenOHLCHandler:

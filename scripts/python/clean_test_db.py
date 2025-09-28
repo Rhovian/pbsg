@@ -2,7 +2,7 @@
 """
 Clean test database by dropping and recreating all tables
 """
-import os
+
 from sqlalchemy import create_engine, text
 from src.models.schema import Base
 

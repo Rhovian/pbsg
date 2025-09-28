@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Literal, Union
+from typing import List, Optional, Dict, Any, Literal
 from dataclasses import dataclass
 from enum import IntEnum
 from decimal import Decimal

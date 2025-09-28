@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Callable
 import websockets
 from loguru import logger
 
-from .types import OHLCData, WebSocketMessage
+from .types import WebSocketMessage
 
 
 class BaseWebSocketHandler(ABC):
