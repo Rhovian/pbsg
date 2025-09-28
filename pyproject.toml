@@ -19,6 +19,8 @@ dependencies = [
     "python-dotenv",
     "loguru",
     "python-telegram-bot",
+    "dash",
+    "plotly",
 ]
 
 [dependency-groups]

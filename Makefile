@@ -3,7 +3,7 @@ UV_RUN = uv run
 PYTHON_SCRIPT = PYTHONPATH=. $(UV_RUN) scripts/python
 PYTEST = $(UV_RUN) python -m pytest
 
-.PHONY: test-integration test-unit test-e2e test-e2e-clean test-all clean-db setup-db seed-db format lint check
+.PHONY: test-integration test-unit test-e2e test-e2e-clean test-all clean-db setup-db seed-db format lint check dash
 
 # Database management
 clean-db:
@@ -39,3 +39,8 @@ lint:
 	$(UV_RUN) ruff check .
 
 check: lint
+
+# Dashboard
+dash:
+	@echo "🚀 Starting Dash dashboard..."
+	PYTHONPATH=. $(UV_RUN) python -c "from src.services.dash_service import DashService; DashService(debug=True).run()"
