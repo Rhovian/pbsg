@@ -6,10 +6,83 @@ Combines efficient bulk storage with infrastructure health monitoring.
 from typing import List, Tuple, Optional, Callable
 from loguru import logger
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
 
-from .storage import OHLCStorage
 from .backpressure import SimpleBackpressureController
 from .types import OHLCData
+from .transformer import KrakenToTimescaleTransformer
+
+
+class OHLCStorage:
+    """Basic OHLC storage using SQLAlchemy bulk operations"""
+
+    def __init__(self, engine: Engine, max_batch_size: int = 1000):
+        self.engine = engine
+        self.max_batch_size = max_batch_size
+        self.total_stored = 0
+        self.total_failed = 0
+
+    def store_batch(self, ohlc_data_list: List[OHLCData]) -> Tuple[int, int, int]:
+        """
+        Store batch of OHLC data
+
+        Returns:
+            Tuple of (success_count, failed_count, processed_count)
+        """
+        if not ohlc_data_list:
+            return 0, 0, 0
+
+        success_count = 0
+        failed_count = 0
+
+        with Session(self.engine) as session:
+            try:
+                for ohlc in ohlc_data_list:
+                    try:
+                        model = KrakenToTimescaleTransformer.transform(ohlc)
+                        if model:
+                            session.add(model)
+                            success_count += 1
+                        else:
+                            failed_count += 1
+                    except Exception as e:
+                        logger.error(f"Error transforming OHLC data: {e}")
+                        failed_count += 1
+
+                session.commit()
+                self.total_stored += success_count
+                self.total_failed += failed_count
+
+            except Exception as e:
+                logger.error(f"Database error in store_batch: {e}")
+                session.rollback()
+                failed_count = len(ohlc_data_list)
+                success_count = 0
+                self.total_failed += failed_count
+
+        return success_count, failed_count, len(ohlc_data_list)
+
+    def get_stats(self) -> dict:
+        """Get storage statistics"""
+        return {
+            'total_stored': self.total_stored,
+            'total_failed': self.total_failed,
+            'success_rate': self.total_stored / max(self.total_stored + self.total_failed, 1)
+        }
+
+    def log_stats(self) -> None:
+        """Log storage statistics"""
+        stats = self.get_stats()
+        logger.info(
+            f"Storage Stats - Stored: {stats['total_stored']}, "
+            f"Failed: {stats['total_failed']}, "
+            f"Success Rate: {stats['success_rate']:.1%}"
+        )
+
+    def reset_stats(self) -> None:
+        """Reset storage statistics"""
+        self.total_stored = 0
+        self.total_failed = 0
 
 
 class IntegratedOHLCStorage:

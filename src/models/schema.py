@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, Integer, DateTime, Index, text, Float
+from sqlalchemy import Column, String, Numeric, Integer, DateTime, Index, text, Float, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
@@ -136,7 +136,7 @@ class RangeIndicator(Base):
     strength = Column(Float)  # 0.0 to 1.0 confidence/strength
     invalidated = Column(Boolean, default=False)
     invalidated_at = Column(DateTime(timezone=True))
-    metadata = Column(JSONB)  # Additional context
+    extra_data = Column(JSONB)  # Additional context
 
     __table_args__ = (
         Index('idx_range_indicators_symbol', 'symbol'),

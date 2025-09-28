@@ -1,9 +1,8 @@
 from .base import BaseWebSocketHandler
 from .kraken import KrakenOHLCHandler
-from .storage import OHLCStorage
 from .transformer import KrakenToTimescaleTransformer
 from .backpressure import SimpleBackpressureController, DuplicateDetector, StorageHealthMonitor
-from .integrated_storage import IntegratedOHLCStorage
+from .integrated_storage import IntegratedOHLCStorage, OHLCStorage
 
 __all__ = [
     "BaseWebSocketHandler",
@@ -12,5 +11,6 @@ __all__ = [
     "SimpleBackpressureController",
     "DuplicateDetector",
     "StorageHealthMonitor",
-    "IntegratedOHLCStorage"
+    "IntegratedOHLCStorage",
+    "OHLCStorage"
 ]

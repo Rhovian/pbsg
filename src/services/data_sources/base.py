@@ -3,7 +3,6 @@ import json
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Callable
 import websockets
-from websockets.client import WebSocketClientProtocol
 from loguru import logger
 
 from .types import OHLCData, WebSocketMessage
@@ -14,7 +13,7 @@ class BaseWebSocketHandler(ABC):
 
     def __init__(self, url: str):
         self.url = url
-        self.websocket: Optional[WebSocketClientProtocol] = None
+        self.websocket: Optional[Any] = None
         self.subscriptions: Dict[str, Any] = {}
         self.callbacks: Dict[str, List[Callable]] = {}
         self.is_connected = False
