@@ -21,7 +21,7 @@ class DataManager:
         self._last_cache_update: Dict[str, datetime] = {}
 
     def get_latest_ohlc_data(
-        self, symbol: str, limit: int = 100, interval_minutes: int = 15
+        self, symbol: str, limit: int = 5000, interval_minutes: int = 15
     ) -> List[Dict[str, Any]]:
         """
         Get latest OHLC data for a symbol
@@ -327,3 +327,86 @@ class DataManager:
         }
 
         return table_map.get(symbol)
+
+    def get_total_record_count(self, symbol: str) -> int:
+        """Get total number of records for a symbol"""
+        normalized_symbol = self._normalize_symbol(symbol)
+        table_name = self._get_table_name(normalized_symbol)
+
+        if not table_name:
+            return 0
+
+        try:
+            with Session(self.engine) as session:
+                query = text(f"""
+                    SELECT COUNT(*) as total
+                    FROM {table_name}
+                    WHERE symbol = :symbol
+                    AND timeframe = '15m'
+                """)
+
+                result = session.execute(query, {"symbol": normalized_symbol})
+                count = result.fetchone()
+                return count.total if count else 0
+
+        except Exception as e:
+            logger.error(f"Error getting record count for {symbol}: {e}")
+            return 0
+
+    def get_ohlc_data_chunk(
+        self, symbol: str, offset: int = 0, limit: int = 5000
+    ) -> List[Dict[str, Any]]:
+        """
+        Get a chunk of OHLC data with offset (for progressive loading)
+
+        Args:
+            symbol: Trading symbol
+            offset: Number of records to skip (from most recent)
+            limit: Number of records to return
+
+        Returns:
+            List of OHLC data dictionaries
+        """
+        normalized_symbol = self._normalize_symbol(symbol)
+        table_name = self._get_table_name(normalized_symbol)
+
+        if not table_name:
+            return []
+
+        try:
+            with Session(self.engine) as session:
+                query = text(f"""
+                    SELECT
+                        symbol, time, open, high, low, close, volume, trades
+                    FROM {table_name}
+                    WHERE symbol = :symbol
+                    AND timeframe = '15m'
+                    ORDER BY time DESC
+                    LIMIT :limit OFFSET :offset
+                """)
+
+                result = session.execute(
+                    query,
+                    {"symbol": normalized_symbol, "limit": limit, "offset": offset},
+                )
+
+                data = []
+                for row in result:
+                    data.append({
+                        "symbol": row.symbol,
+                        "timestamp": row.time.isoformat(),
+                        "open": float(row.open),
+                        "high": float(row.high),
+                        "low": float(row.low),
+                        "close": float(row.close),
+                        "volume": float(row.volume),
+                        "trades": row.trades,
+                    })
+
+                # Reverse to get chronological order (oldest first)
+                data.reverse()
+                return data
+
+        except Exception as e:
+            logger.error(f"Error retrieving OHLC chunk for {symbol}: {e}")
+            return []

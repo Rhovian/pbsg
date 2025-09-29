@@ -1,8 +1,8 @@
 """Modular Dash web framework service for creating interactive dashboards"""
 
 import dash
-from dash import dcc, html, Input, Output
-from typing import Optional
+from dash import dcc, html, Input, Output, State
+from typing import Optional, List, Dict, Any
 from loguru import logger
 from sqlalchemy.engine import Engine
 
@@ -185,24 +185,61 @@ class DashboardService:
                         ),
                         html.Div(
                             [
-                                html.Label("Records:", className="control-label"),
-                                dcc.Dropdown(
-                                    id="limit-dropdown",
-                                    options=[
-                                        {"label": "50", "value": 50},
-                                        {"label": "100", "value": 100},
-                                        {"label": "200", "value": 200},
-                                        {"label": "500", "value": 500},
-                                    ],
-                                    value=100,
-                                    clearable=False,
-                                    className="limit-dropdown",
+                                html.Button(
+                                    "Load All Historical Data",
+                                    id="load-all-button",
+                                    className="load-all-button",
+                                    style={
+                                        "padding": "10px 20px",
+                                        "background": "#667eea",
+                                        "color": "white",
+                                        "border": "none",
+                                        "border-radius": "5px",
+                                        "cursor": "pointer",
+                                        "margin-top": "20px"
+                                    }
                                 ),
                             ],
                             className="control-group",
                         ),
                     ],
                     className="controls",
+                ),
+                # Progress bar for loading historical data
+                html.Div(
+                    [
+                        dcc.Store(id="all-ohlc-data", data=[]),  # Store for all loaded data
+                        dcc.Store(id="loading-progress", data={"current": 0, "total": 0, "loading": False}),
+                        html.Div(
+                            id="progress-container",
+                            style={"display": "none"},
+                            children=[
+                                html.H4("Loading Historical Data...", style={"margin": "10px 0"}),
+                                html.Div(
+                                    [
+                                        html.Div(
+                                            id="progress-bar",
+                                            style={
+                                                "width": "0%",
+                                                "height": "20px",
+                                                "background": "#667eea",
+                                                "border-radius": "10px",
+                                                "transition": "width 0.3s ease"
+                                            }
+                                        )
+                                    ],
+                                    style={
+                                        "width": "100%",
+                                        "height": "20px",
+                                        "background": "#2d2d2d",
+                                        "border-radius": "10px",
+                                        "margin": "10px 0"
+                                    }
+                                ),
+                                html.Div(id="progress-text", style={"text-align": "center"})
+                            ]
+                        )
+                    ]
                 ),
                 # Statistics cards
                 html.Div(id="stats-cards"),
@@ -236,42 +273,47 @@ class DashboardService:
                 Output("price-chart", "figure"),
                 Output("volume-chart", "figure"),
                 Output("stats-cards", "children"),
+                Output("all-ohlc-data", "data"),
             ],
             [
                 Input("symbol-dropdown", "value"),
                 Input("chart-type-dropdown", "value"),
                 Input("interval-dropdown", "value"),
-                Input("limit-dropdown", "value"),
                 Input("interval-component", "n_intervals"),
             ],
+            [State("all-ohlc-data", "data")],
         )
         def update_dashboard(
             selected_symbol: str,
             chart_type: str,
             interval_minutes: int,
-            limit: int,
             n: int,
+            stored_data: List[Dict[str, Any]],
         ) -> tuple:
             """Update all dashboard components"""
             logger.debug(
                 f"Updating dashboard: symbol={selected_symbol}, "
-                f"type={chart_type}, interval={interval_minutes}, limit={limit}"
+                f"type={chart_type}, interval={interval_minutes}"
             )
 
             try:
-                # Get OHLC data
-                ohlc_data = self.data_manager.get_latest_ohlc_data(
-                    symbol=selected_symbol,
-                    limit=limit,
-                    interval_minutes=interval_minutes,
-                )
+                # Use stored data if available and symbol matches, otherwise fetch fresh data
+                symbol_changed = not stored_data or (stored_data and stored_data[0].get("symbol") != selected_symbol)
 
-                # Get volume data
-                volume_data = self.data_manager.get_volume_data(
-                    symbol=selected_symbol,
-                    limit=limit,
-                    interval_minutes=interval_minutes,
-                )
+                if symbol_changed or not stored_data:
+                    # Get initial OHLC data (5000 records)
+                    ohlc_data = self.data_manager.get_latest_ohlc_data(
+                        symbol=selected_symbol,
+                        limit=5000,  # Default to 5000 records
+                        interval_minutes=interval_minutes,
+                    )
+                    stored_data = ohlc_data
+                else:
+                    # Use stored data
+                    ohlc_data = stored_data
+
+                # Volume data is same as OHLC data
+                volume_data = ohlc_data
 
                 # Get latest price
                 latest_price = self.data_manager.get_latest_price(selected_symbol)
@@ -295,7 +337,7 @@ class DashboardService:
                     storage_stats=storage_stats,
                 )
 
-                return price_chart, volume_chart, stats_cards
+                return price_chart, volume_chart, stats_cards, stored_data
 
             except Exception as e:
                 logger.error(f"Error updating dashboard: {e}")
@@ -309,7 +351,106 @@ class DashboardService:
                 )
                 empty_stats = html.Div("Error loading statistics")
 
-                return empty_price, empty_volume, empty_stats
+                return empty_price, empty_volume, empty_stats, stored_data or []
+
+        # Progressive loading callbacks
+        @self.app.callback(
+            [
+                Output("loading-progress", "data"),
+                Output("progress-container", "style"),
+            ],
+            [Input("load-all-button", "n_clicks")],
+            [State("symbol-dropdown", "value"), State("all-ohlc-data", "data")],
+            prevent_initial_call=True,
+        )
+        def start_progressive_loading(n_clicks, selected_symbol, current_data):
+            """Start progressive loading of all historical data"""
+            if not n_clicks or not selected_symbol:
+                return {"current": 0, "total": 0, "loading": False}, {"display": "none"}
+
+            # Get total record count
+            total_records = self.data_manager.get_total_record_count(selected_symbol)
+            current_records = len(current_data) if current_data else 0
+
+            if current_records >= total_records:
+                return {"current": total_records, "total": total_records, "loading": False}, {"display": "none"}
+
+            # Start loading
+            return {
+                "current": current_records,
+                "total": total_records,
+                "loading": True
+            }, {"display": "block"}
+
+        @self.app.callback(
+            [
+                Output("progress-bar", "style"),
+                Output("progress-text", "children"),
+                Output("all-ohlc-data", "data", allow_duplicate=True),
+            ],
+            [Input("loading-progress", "data")],
+            [State("symbol-dropdown", "value"), State("all-ohlc-data", "data")],
+            prevent_initial_call=True,
+        )
+        def update_progressive_loading(progress_data, selected_symbol, current_data):
+            """Handle progressive data loading"""
+            if not progress_data.get("loading") or not selected_symbol:
+                return {
+                    "width": "0%",
+                    "height": "20px",
+                    "background": "#667eea",
+                    "border-radius": "10px",
+                    "transition": "width 0.3s ease"
+                }, "", current_data or []
+
+            current = progress_data["current"]
+            total = progress_data["total"]
+
+            if current >= total:
+                # Loading complete
+                return {
+                    "width": "100%",
+                    "height": "20px",
+                    "background": "#00D4AA",
+                    "border-radius": "10px",
+                    "transition": "width 0.3s ease"
+                }, f"Complete! Loaded {total:,} records", current_data or []
+
+            # Load next chunk
+            chunk_size = 5000
+            offset = current
+
+            try:
+                chunk_data = self.data_manager.get_ohlc_data_chunk(
+                    symbol=selected_symbol,
+                    offset=offset,
+                    limit=chunk_size
+                )
+
+                # Merge with existing data (ensure chronological order)
+                all_data = (current_data or []) + chunk_data
+                # Sort by timestamp to maintain order
+                all_data.sort(key=lambda x: x["timestamp"])
+
+                progress_percent = min((current + len(chunk_data)) / total * 100, 100)
+
+                return {
+                    "width": f"{progress_percent}%",
+                    "height": "20px",
+                    "background": "#667eea",
+                    "border-radius": "10px",
+                    "transition": "width 0.3s ease"
+                }, f"Loading... {current + len(chunk_data):,} of {total:,} records ({progress_percent:.1f}%)", all_data
+
+            except Exception as e:
+                logger.error(f"Error in progressive loading: {e}")
+                return {
+                    "width": f"{current/total*100}%",
+                    "height": "20px",
+                    "background": "#FF6B6B",
+                    "border-radius": "10px",
+                    "transition": "width 0.3s ease"
+                }, f"Error loading data: {str(e)}", current_data or []
 
     def run(self, host: str = "127.0.0.1", port: int = 8050) -> None:
         """Run the Dash application"""
