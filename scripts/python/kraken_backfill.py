@@ -1,33 +1,25 @@
 #!/usr/bin/env python3
 """
-Kraken Historical Data Backfill Tool
-
-Production tool for backfilling historical OHLC data from Kraken's REST API.
-Supports date range specification, chunked processing, error handling with backoff,
-and comprehensive logging with ingestion metrics.
-
-Usage:
-    python scripts/python/kraken_backfill.py --start-date 2024-01-01 --end-date 2024-01-31 --symbols BTC/USD,ETH/USD
-    python scripts/python/kraken_backfill.py --days-back 30 --symbols SOL/USD
-    python scripts/python/kraken_backfill.py --config config.json
+Core Kraken Backfill Tool - moved from kraken_backfill.py
 """
 
-import argparse
 import asyncio
-import json
-import signal
 import sys
 import time
+import argparse
+import json
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Tuple
 import traceback
 
 from loguru import logger
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
 from src.services.data_sources.kraken.backfill import KrakenBackfillClient
 from src.services.data_sources.storage import IntegratedOHLCStorage
 from src.services.data_sources.types import OHLCData
+from scripts.python.data_integrity_check import DataIntegrityChecker, DataGap
 
 
 class BackfillMetrics:
@@ -452,254 +444,403 @@ class KrakenBackfillTool:
             logger.error("❌ BACKFILL COMPLETED WITH ERRORS")
 
 
-def parse_arguments():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser(
-        description="Kraken Historical Data Backfill Tool",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Backfill specific date range
-  %(prog)s --start-date 2024-01-01 --end-date 2024-01-31 --symbols BTC/USD,ETH/USD
+class SmartBackfillTool:
+    """Intelligent backfill tool with gap detection and oldest-data logic"""
 
-  # Backfill last 30 days
-  %(prog)s --days-back 30 --symbols SOL/USD
+    def __init__(self, database_url: Optional[str] = None):
+        self.database_url = database_url or "postgresql://pbsg:pbsg_password@localhost:5432/pbsg"
+        self.engine = create_engine(self.database_url)
+        self.integrity_checker = DataIntegrityChecker(self.database_url)
+        self.symbols = ["BTC/USD", "ETH/USD", "SOL/USD"]
 
-  # Use config file
-  %(prog)s --config backfill-config.json
+    def get_oldest_data_timestamp(self, symbol: str) -> Optional[datetime]:
+        """Get the oldest data timestamp for a symbol"""
+        table_map = {
+            "BTC/USD": "btc_ohlc",
+            "ETH/USD": "eth_ohlc",
+            "SOL/USD": "sol_ohlc"
+        }
 
-  # All supported symbols for last week
-  %(prog)s --days-back 7 --all-symbols
-        """,
-    )
+        table_name = table_map.get(symbol)
+        if not table_name:
+            return None
 
-    # Date specification (mutually exclusive)
-    date_group = parser.add_mutually_exclusive_group(required=True)
-    date_group.add_argument("--start-date", type=str, help="Start date (YYYY-MM-DD)")
-    date_group.add_argument(
-        "--days-back", type=int, help="Number of days back from now"
-    )
-    date_group.add_argument("--config", type=str, help="JSON config file path")
-
-    parser.add_argument(
-        "--end-date", type=str, help="End date (YYYY-MM-DD), defaults to now"
-    )
-
-    # Symbol specification
-    symbol_group = parser.add_mutually_exclusive_group()
-    symbol_group.add_argument(
-        "--symbols",
-        type=str,
-        help="Comma-separated list of symbols (e.g., BTC/USD,ETH/USD)",
-    )
-    symbol_group.add_argument(
-        "--all-symbols", action="store_true", help="Backfill all supported symbols"
-    )
-
-    # Optional configuration
-    parser.add_argument(
-        "--chunk-hours", type=int, default=24, help="Chunk size in hours (default: 24)"
-    )
-    parser.add_argument(
-        "--batch-size", type=int, default=100, help="Database batch size (default: 100)"
-    )
-    parser.add_argument(
-        "--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO"
-    )
-    parser.add_argument("--log-file", type=str, help="Log file path")
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Fetch data but don't store to database"
-    )
-
-    return parser.parse_args()
-
-
-def load_config_file(config_path: str) -> Dict:
-    """Load configuration from JSON file"""
-    try:
-        with open(config_path, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        logger.error(f"Failed to load config file {config_path}: {e}")
-        sys.exit(1)
-
-
-def parse_date(date_str: str) -> datetime:
-    """Parse date string to datetime object"""
-    try:
-        return datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    except ValueError as e:
-        logger.error(f"Invalid date format '{date_str}': {e}")
-        logger.error("Expected format: YYYY-MM-DD")
-        sys.exit(1)
-
-
-def prompt_for_input():
-    """Prompt user for backfill parameters"""
-    print("🚀 Kraken Historical Data Backfill Tool")
-    print("=" * 50)
-
-    # Get days back
-    while True:
         try:
-            days_input = input(
-                "How many days back to backfill? (e.g., 7, 30, 90): "
-            ).strip()
-            days_back = int(days_input)
-            if days_back <= 0:
-                print("❌ Please enter a positive number of days")
+            with Session(self.engine) as session:
+                query = text(f"""
+                    SELECT MIN(time) as oldest_time
+                    FROM {table_name}
+                    WHERE symbol = :symbol
+                    AND timeframe = '15m'
+                """)
+
+                result = session.execute(query, {"symbol": symbol})
+                row = result.fetchone()
+                return row.oldest_time if row and row.oldest_time else None
+
+        except Exception as e:
+            logger.error(f"Error getting oldest timestamp for {symbol}: {e}")
+            return None
+
+    def analyze_data_status(self) -> Dict[str, Dict]:
+        """Analyze current data status for all symbols"""
+        status = {}
+
+        for symbol in self.symbols:
+            oldest_timestamp = self.get_oldest_data_timestamp(symbol)
+
+            if oldest_timestamp:
+                status[symbol] = {
+                    "has_data": True,
+                    "oldest_timestamp": oldest_timestamp,
+                    "oldest_date": oldest_timestamp.strftime("%Y-%m-%d %H:%M"),
+                }
+            else:
+                status[symbol] = {
+                    "has_data": False,
+                    "oldest_timestamp": None,
+                    "oldest_date": "No data",
+                }
+
+        return status
+
+    async def detect_and_show_gaps(self) -> Dict[str, List[DataGap]]:
+        """Detect and display gaps for all symbols"""
+        logger.info("🔍 Detecting data gaps...")
+
+        reports = self.integrity_checker.check_all_symbols()
+        all_gaps = {}
+
+        print("\n" + "="*60)
+        print("📊 GAP ANALYSIS")
+        print("="*60)
+
+        total_gaps = 0
+        total_missing_intervals = 0
+
+        for symbol, report in reports.items():
+            gaps = report.gaps
+            all_gaps[symbol] = gaps
+
+            if report.total_records == 0:
+                print(f"\n❌ {symbol}: No data found")
                 continue
-            if days_back > 365:
-                confirm = (
-                    input(f"⚠️  {days_back} days is a lot of data. Continue? (y/N): ")
-                    .strip()
-                    .lower()
+
+            print(f"\n📈 {symbol}")
+            print(f"   Records: {report.total_records:,} ({report.completeness_percentage:.1f}% complete)")
+
+            if gaps:
+                total_gaps += len(gaps)
+                symbol_missing = sum(gap.missing_intervals for gap in gaps)
+                total_missing_intervals += symbol_missing
+
+                print(f"   Gaps: {len(gaps)} gaps, {symbol_missing:,} missing intervals")
+
+                # Show largest gaps
+                sorted_gaps = sorted(gaps, key=lambda g: g.missing_intervals, reverse=True)
+                for i, gap in enumerate(sorted_gaps[:3], 1):
+                    start_time = gap.start_time.strftime("%m-%d %H:%M")
+                    end_time = gap.end_time.strftime("%m-%d %H:%M")
+                    print(f"     {i}. {start_time} → {end_time} ({gap.missing_intervals} intervals, {gap.duration_hours:.1f}h)")
+
+                if len(gaps) > 3:
+                    print(f"     ... and {len(gaps) - 3} more gaps")
+            else:
+                print("   ✅ No gaps found")
+
+        print(f"\n📊 SUMMARY")
+        print(f"   Total gaps: {total_gaps}")
+        print(f"   Total missing intervals: {total_missing_intervals:,}")
+        print(f"   Estimated time to fill: ~{total_missing_intervals * 15 / 60:.1f} hours of data")
+
+        return all_gaps
+
+    async def fill_gaps(self, gaps: Dict[str, List[DataGap]]) -> bool:
+        """Fill detected gaps using targeted backfill"""
+        symbols_with_gaps = [symbol for symbol, symbol_gaps in gaps.items() if symbol_gaps]
+
+        if not symbols_with_gaps:
+            print("\n✅ No gaps to fill!")
+            return True
+
+        total_gaps = sum(len(symbol_gaps) for symbol_gaps in gaps.values())
+        print(f"\n🎯 FILLING {total_gaps} GAPS")
+        print("="*40)
+
+        # Create backfill config optimized for gap filling
+        config = {
+            "log_level": "INFO",
+            "chunk_size_hours": 1,  # Smaller chunks for precise gap filling
+            "batch_size": 100,
+            "request_timeout": 30.0,
+            "base_delay": 1.0,
+            "max_retries": 3
+        }
+
+        tool = KrakenBackfillTool(config)
+        overall_success = True
+        filled_intervals = 0
+
+        for symbol in symbols_with_gaps:
+            symbol_gaps = gaps[symbol]
+            print(f"\n🔧 Filling gaps for {symbol} ({len(symbol_gaps)} gaps)")
+
+            for i, gap in enumerate(symbol_gaps, 1):
+                # Add small buffer to ensure we don't miss intervals at boundaries
+                gap_start = gap.start_time - timedelta(minutes=15)
+                gap_end = gap.end_time + timedelta(minutes=15)
+
+                start_timestamp = int(gap_start.timestamp())
+                end_timestamp = int(gap_end.timestamp())
+
+                start_str = gap_start.strftime("%m-%d %H:%M")
+                end_str = gap_end.strftime("%m-%d %H:%M")
+
+                print(f"   Gap {i}/{len(symbol_gaps)}: {start_str} → {end_str}")
+
+                try:
+                    success = await tool.backfill_symbol_range(
+                        symbol, start_timestamp, end_timestamp
+                    )
+
+                    if success:
+                        filled_intervals += gap.missing_intervals
+                        print(f"   ✅ Filled {gap.missing_intervals} intervals")
+                    else:
+                        print(f"   ❌ Failed to fill gap")
+                        overall_success = False
+
+                except Exception as e:
+                    logger.error(f"   ❌ Error filling gap: {e}")
+                    overall_success = False
+
+                # Brief pause between gaps
+                await asyncio.sleep(0.5)
+
+        # Final flush
+        try:
+            flushed_count = await tool.storage.force_flush_all()
+            if flushed_count > 0:
+                print(f"\n💾 Flushed {flushed_count} additional records")
+        except Exception as e:
+            logger.error(f"Error during final flush: {e}")
+
+        print(f"\n📊 GAP FILLING SUMMARY")
+        print(f"   Filled intervals: {filled_intervals:,}")
+        print(f"   Success: {'✅ Complete' if overall_success else '❌ Partial'}")
+
+        return overall_success
+
+    async def extend_from_oldest(self, days_back: int, symbols: List[str]) -> bool:
+        """Extend data backwards from oldest existing data"""
+        print(f"\n🚀 EXTENDING DATA {days_back} DAYS BACKWARDS")
+        print("="*50)
+
+        # Get oldest data for each symbol
+        extension_plan = {}
+
+        for symbol in symbols:
+            oldest_timestamp = self.get_oldest_data_timestamp(symbol)
+
+            if oldest_timestamp:
+                # Calculate new start date
+                new_start = oldest_timestamp - timedelta(days=days_back)
+                extension_plan[symbol] = {
+                    "oldest_existing": oldest_timestamp,
+                    "new_start": new_start,
+                    "days_to_add": days_back,
+                    "estimated_intervals": days_back * 96  # 96 intervals per day
+                }
+
+                print(f"📈 {symbol}")
+                print(f"   Current oldest: {oldest_timestamp.strftime('%Y-%m-%d %H:%M')}")
+                print(f"   Extending to:   {new_start.strftime('%Y-%m-%d %H:%M')}")
+                print(f"   New intervals:  ~{days_back * 96:,}")
+            else:
+                print(f"❌ {symbol}: No existing data, skipping")
+
+        if not extension_plan:
+            print("\n❌ No symbols with existing data to extend")
+            return False
+
+        # Confirm with user
+        total_intervals = sum(plan["estimated_intervals"] for plan in extension_plan.values())
+        print(f"\n📊 EXTENSION SUMMARY")
+        print(f"   Symbols: {len(extension_plan)}")
+        print(f"   Total estimated intervals: {total_intervals:,}")
+        print(f"   Estimated data: ~{total_intervals * 15 / 60 / 24:.1f} days")
+
+        confirm = input(f"\nProceed with extension? (Y/n): ").strip().lower()
+        if confirm not in ("", "y", "yes"):
+            print("👋 Extension cancelled")
+            return False
+
+        # Run backfill for each symbol
+        config = {
+            "log_level": "INFO",
+            "chunk_size_hours": 24,  # Larger chunks for bulk backfill
+            "batch_size": 500,
+            "request_timeout": 30.0,
+        }
+
+        tool = KrakenBackfillTool(config)
+        overall_success = True
+
+        for symbol, plan in extension_plan.items():
+            print(f"\n🔧 Extending {symbol}...")
+
+            start_timestamp = int(plan["new_start"].timestamp())
+            end_timestamp = int(plan["oldest_existing"].timestamp())
+
+            try:
+                success = await tool.backfill_symbol_range(
+                    symbol, start_timestamp, end_timestamp
                 )
-                if confirm != "y":
+
+                if success:
+                    print(f"   ✅ Successfully extended {symbol}")
+                else:
+                    print(f"   ❌ Failed to extend {symbol}")
+                    overall_success = False
+
+            except Exception as e:
+                logger.error(f"   ❌ Error extending {symbol}: {e}")
+                overall_success = False
+
+        # Final flush
+        try:
+            flushed_count = await tool.storage.force_flush_all()
+            if flushed_count > 0:
+                print(f"\n💾 Flushed {flushed_count} additional records")
+        except Exception as e:
+            logger.error(f"Error during final flush: {e}")
+
+        return overall_success
+
+    def prompt_for_mode(self) -> Tuple[str, Optional[int], Optional[List[str]]]:
+        """Interactive prompt for backfill mode"""
+        print("\n🚀 Smart Kraken Backfill Tool")
+        print("="*40)
+
+        # Show current data status
+        status = self.analyze_data_status()
+        print("\n📊 CURRENT DATA STATUS")
+        for symbol, info in status.items():
+            if info["has_data"]:
+                print(f"   {symbol}: {info['oldest_date']} (oldest)")
+            else:
+                print(f"   {symbol}: No data")
+
+        print("\n🎯 BACKFILL MODES:")
+        print("   • Type 'gap' to fill missing intervals")
+        print("   • Type '7 days', '30 days', etc. to extend backwards from oldest data")
+        print("   • Type 'cancel' to exit")
+
+        while True:
+            try:
+                mode_input = input("\nBackfill mode: ").strip().lower()
+
+                if mode_input == "cancel":
+                    return "cancel", None, None
+
+                elif mode_input == "gap":
+                    return "gap", None, None
+
+                elif mode_input.endswith(" days") or mode_input.endswith(" day"):
+                    # Parse days
+                    try:
+                        days_str = mode_input.replace(" days", "").replace(" day", "").strip()
+                        days_back = int(days_str)
+
+                        if days_back <= 0:
+                            print("❌ Please enter a positive number of days")
+                            continue
+
+                        if days_back > 365:
+                            confirm = input(f"⚠️  {days_back} days is a lot of data. Continue? (y/N): ").strip().lower()
+                            if confirm != "y":
+                                continue
+
+                        # Get symbols to extend
+                        symbols_with_data = [s for s, info in status.items() if info["has_data"]]
+
+                        if not symbols_with_data:
+                            print("❌ No symbols with existing data to extend")
+                            continue
+
+                        print(f"\nSymbols with data: {', '.join(symbols_with_data)}")
+                        symbol_input = input("Extend which symbols? (comma-separated or 'all'): ").strip()
+
+                        if symbol_input.lower() == "all":
+                            selected_symbols = symbols_with_data
+                        else:
+                            selected_symbols = [s.strip() for s in symbol_input.split(",")]
+                            invalid = [s for s in selected_symbols if s not in symbols_with_data]
+                            if invalid:
+                                print(f"❌ Invalid/no-data symbols: {', '.join(invalid)}")
+                                continue
+
+                        return "extend", days_back, selected_symbols
+
+                    except ValueError:
+                        print("❌ Invalid format. Use '7 days', '30 days', etc.")
+                        continue
+
+                else:
+                    print("❌ Invalid mode. Type 'gap', 'X days', or 'cancel'")
                     continue
-            break
-        except ValueError:
-            print("❌ Please enter a valid number")
-        except KeyboardInterrupt:
-            print("\n👋 Cancelled")
-            sys.exit(1)
 
-    # Get symbols
-    supported_symbols = KrakenBackfillClient.get_supported_symbols()
-    print(f"\nSupported symbols: {', '.join(supported_symbols)}")
-
-    while True:
-        symbols_input = input(
-            "\nSymbols to backfill (comma-separated, or 'all' for all symbols): "
-        ).strip()
-
-        if not symbols_input:
-            print("❌ Please enter symbols or 'all'")
-            continue
-
-        if symbols_input.lower() == "all":
-            symbols = supported_symbols
-            break
-        else:
-            symbols = [s.strip() for s in symbols_input.split(",")]
-            invalid_symbols = [s for s in symbols if s not in supported_symbols]
-            if invalid_symbols:
-                print(f"❌ Invalid symbols: {', '.join(invalid_symbols)}")
-                continue
-            break
-
-    # Calculate dates
-    end_date = datetime.now(timezone.utc)
-    start_date = end_date - timedelta(days=days_back)
-
-    # Show summary
-    print("\n📋 Backfill Summary:")
-    print(
-        f"   📅 Date Range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
-    )
-    print(f"   💱 Symbols: {', '.join(symbols)}")
-    print(f"   📦 Estimated 15min intervals: ~{days_back * 96:,} per symbol")
-
-    confirm = input("\nProceed with backfill? (Y/n): ").strip().lower()
-    if confirm in ("", "y", "yes"):
-        return symbols, start_date, end_date
-    else:
-        print("👋 Cancelled")
-        sys.exit(0)
+            except KeyboardInterrupt:
+                print("\n👋 Cancelled")
+                return "cancel", None, None
 
 
 async def main():
     """Main function"""
-    # Check if we have command line arguments (for backwards compatibility)
-    if len(sys.argv) > 1:
-        args = parse_arguments()
-
-        # Load configuration from args (existing logic)
-        if args.config:
-            config = load_config_file(args.config)
-            symbols = config.get("symbols", [])
-            start_date = parse_date(config["start_date"])
-            end_date = parse_date(
-                config.get("end_date", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
-            )
-        else:
-            # Build config from arguments
-            config = {
-                "log_level": args.log_level,
-                "chunk_size_hours": args.chunk_hours,
-                "batch_size": args.batch_size,
-            }
-
-            if args.log_file:
-                config["log_file"] = args.log_file
-
-            # Parse symbols
-            if args.all_symbols:
-                symbols = KrakenBackfillClient.get_supported_symbols()
-            elif args.symbols:
-                symbols = [s.strip() for s in args.symbols.split(",")]
-            else:
-                logger.error("Must specify either --symbols or --all-symbols")
-                sys.exit(1)
-
-            # Parse dates
-            if args.days_back:
-                end_date = datetime.now(timezone.utc)
-                start_date = end_date - timedelta(days=args.days_back)
-            else:
-                start_date = parse_date(args.start_date)
-                if args.end_date:
-                    end_date = parse_date(args.end_date)
-                else:
-                    end_date = datetime.now(timezone.utc)
-    else:
-        # Interactive mode - prompt for input
-        symbols, start_date, end_date = prompt_for_input()
-
-        # Use default config for interactive mode
-        config = {
-            "log_level": "INFO",
-            "chunk_size_hours": 24,
-            "batch_size": 100,
-        }
-
-    # Validate dates
-    if start_date >= end_date:
-        logger.error("Start date must be before end date")
-        sys.exit(1)
-
-    # Create backfill tool
-    tool = KrakenBackfillTool(config)
-
-    # Setup signal handlers for graceful shutdown
-    def signal_handler(signum, frame):
-        logger.warning(f"Received signal {signum}, initiating graceful shutdown...")
-        tool.running = False
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    tool = SmartBackfillTool()
 
     try:
-        # Run backfill
-        success = await tool.run_backfill(symbols, start_date, end_date)
+        # Get mode from user
+        mode, days_back, symbols = tool.prompt_for_mode()
 
-        # Print final metrics
-        tool.print_final_metrics(success)
+        if mode == "cancel":
+            print("👋 Goodbye!")
+            return 0
 
-        sys.exit(0 if success else 1)
+        elif mode == "gap":
+            # Gap filling mode
+            gaps = await tool.detect_and_show_gaps()
+
+            # Ask for confirmation
+            total_gaps = sum(len(symbol_gaps) for symbol_gaps in gaps.values())
+            if total_gaps == 0:
+                return 0
+
+            confirm = input(f"\nFill {total_gaps} detected gaps? (Y/n): ").strip().lower()
+            if confirm not in ("", "y", "yes"):
+                print("👋 Gap filling cancelled")
+                return 0
+
+            success = await tool.fill_gaps(gaps)
+            return 0 if success else 1
+
+        elif mode == "extend":
+            # Extension mode
+            success = await tool.extend_from_oldest(days_back, symbols)
+            return 0 if success else 1
 
     except Exception as e:
-        logger.error(f"❌ Backfill failed with exception: {e}")
+        logger.error(f"❌ Smart backfill failed: {e}")
         logger.error(traceback.format_exc())
-        tool.print_final_metrics(False)
-        sys.exit(1)
+        return 1
 
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        exit_code = asyncio.run(main())
+        sys.exit(exit_code)
     except KeyboardInterrupt:
-        logger.warning("👋 Backfill cancelled by user")
+        logger.warning("👋 Cancelled by user")
         sys.exit(1)
     except Exception as e:
         logger.error(f"❌ Fatal error: {e}")

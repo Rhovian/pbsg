@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 from loguru import logger
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
+from sqlalchemy.dialects.postgresql import insert
 
 from .backpressure import SimpleBackpressureController
 from .types import OHLCData
@@ -42,7 +43,7 @@ class OHLCStorage:
                     try:
                         model = KrakenToTimescaleTransformer.transform(ohlc)
                         if model:
-                            session.add(model)
+                            session.merge(model)
                             success_count += 1
                         else:
                             failed_count += 1

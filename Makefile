@@ -3,7 +3,7 @@ UV_RUN = uv run
 PYTHON_SCRIPT = PYTHONPATH=. $(UV_RUN) scripts/python
 PYTEST = $(UV_RUN) python -m pytest
 
-.PHONY: test-integration test-unit test-e2e test-e2e-clean test-all clean-db setup-db seed-db format lint check dash backfill
+.PHONY: test-integration test-unit test-e2e test-e2e-clean test-all clean-db setup-db seed-db format lint check dash backfill check-data
 
 # Database management
 clean-db:
@@ -48,3 +48,8 @@ dash:
 # Backfill historical data
 backfill:
 	$(PYTHON_SCRIPT)/kraken_backfill.py
+
+# Data integrity check
+check-data:
+	@echo "🔍 Checking data integrity..."
+	$(PYTHON_SCRIPT)/data_integrity_check.py
