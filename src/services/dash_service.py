@@ -1,100 +1,56 @@
-"""Dash web framework service for creating interactive dashboards"""
+"""Legacy Dash web framework service - redirects to modular dashboard"""
 
-import dash
-from dash import dcc, html, Input, Output
-import plotly.graph_objs as go
-from typing import Dict, Any
+from typing import Optional
 from loguru import logger
+from sqlalchemy.engine import Engine
+
+from .dashboard import DashboardService
+from .data_sources.storage import IntegratedOHLCStorage
 
 
 class DashService:
-    """Service for creating and managing Dash web applications"""
+    """
+    Legacy service wrapper for backward compatibility.
+    Redirects to the new modular DashboardService.
+    """
 
-    def __init__(self, debug: bool = False) -> None:
-        self.app = dash.Dash(__name__)
-        self.debug = debug
-        self._setup_layout()
-        self._setup_callbacks()
+    def __init__(
+        self,
+        engine: Optional[Engine] = None,
+        storage: Optional[IntegratedOHLCStorage] = None,
+        debug: bool = False,
+    ) -> None:
+        """
+        Initialize dashboard service
 
-    def _setup_layout(self) -> None:
-        """Setup the basic layout for the Dash application"""
-        self.app.layout = html.Div(
-            [
-                html.H1("PBSG Dashboard", style={"textAlign": "center"}),
-                html.Div(
-                    [
-                        html.Label("Select Symbol:"),
-                        dcc.Dropdown(
-                            id="symbol-dropdown",
-                            options=[
-                                {"label": "BTC/USD", "value": "XBTUSD"},
-                                {"label": "ETH/USD", "value": "ETHUSD"},
-                            ],
-                            value="XBTUSD",
-                        ),
-                    ],
-                    style={"width": "30%", "display": "inline-block"},
-                ),
-                html.Div([dcc.Graph(id="price-chart")]),
-                html.Div([dcc.Graph(id="volume-chart")]),
-                dcc.Interval(
-                    id="interval-component",
-                    interval=5 * 1000,  # Update every 5 seconds
-                    n_intervals=0,
-                ),
-            ]
-        )
-
-    def _setup_callbacks(self) -> None:
-        """Setup Dash callbacks for interactivity"""
-
-        @self.app.callback(
-            Output("price-chart", "figure"),
-            Input("symbol-dropdown", "value"),
-            Input("interval-component", "n_intervals"),
-        )
-        def update_price_chart(selected_symbol: str, n: int) -> Dict[str, Any]:
-            """Update the price chart based on selected symbol"""
-            logger.debug(f"Updating price chart for {selected_symbol}")
-
-            # TODO: Replace with actual data from database/cache
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=[], y=[], mode="lines", name="Price"))
-
-            fig.update_layout(
-                title=f"{selected_symbol} Price Chart",
-                xaxis_title="Time",
-                yaxis_title="Price (USD)",
+        Args:
+            engine: SQLAlchemy database engine (required for data connectivity)
+            storage: Optional integrated storage for stats
+            debug: Enable debug mode
+        """
+        if engine is None:
+            logger.warning(
+                "DashService initialized without database engine. "
+                "Dashboard will show empty charts. "
+                "Pass an SQLAlchemy engine to connect to your data sources."
             )
 
-            return fig
-
-        @self.app.callback(
-            Output("volume-chart", "figure"),
-            Input("symbol-dropdown", "value"),
-            Input("interval-component", "n_intervals"),
+        self.dashboard_service = DashboardService(
+            engine=engine, storage=storage, debug=debug
         )
-        def update_volume_chart(selected_symbol: str, n: int) -> Dict[str, Any]:
-            """Update the volume chart based on selected symbol"""
-            logger.debug(f"Updating volume chart for {selected_symbol}")
-
-            # TODO: Replace with actual data from database/cache
-            fig = go.Figure()
-            fig.add_trace(go.Bar(x=[], y=[], name="Volume"))
-
-            fig.update_layout(
-                title=f"{selected_symbol} Volume Chart",
-                xaxis_title="Time",
-                yaxis_title="Volume",
-            )
-
-            return fig
 
     def run(self, host: str = "127.0.0.1", port: int = 8050) -> None:
         """Run the Dash application"""
-        logger.info(f"Starting Dash server on {host}:{port}")
-        self.app.run(debug=self.debug, host=host, port=port)
+        self.dashboard_service.run(host=host, port=port)
 
-    def get_app(self) -> dash.Dash:
+    def get_app(self):
         """Get the Dash application instance"""
-        return self.app
+        return self.dashboard_service.get_app()
+
+    def get_data_manager(self):
+        """Get the data manager instance"""
+        return self.dashboard_service.get_data_manager()
+
+    def clear_cache(self) -> None:
+        """Clear data cache"""
+        self.dashboard_service.clear_cache()

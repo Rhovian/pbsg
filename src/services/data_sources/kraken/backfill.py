@@ -51,7 +51,9 @@ class KrakenBackfillClient:
 
         self._last_request_time = time.time()
 
-    async def _make_request(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _make_request(
+        self, endpoint: str, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Make HTTP request to Kraken API with error handling
 
@@ -101,7 +103,16 @@ class KrakenBackfillClient:
             OHLCData object
         """
         # Kraken REST API format: [time, open, high, low, close, vwap, volume, count]
-        time_unix, open_price, high_price, low_price, close_price, vwap, volume, count = ohlc_array
+        (
+            time_unix,
+            open_price,
+            high_price,
+            low_price,
+            close_price,
+            vwap,
+            volume,
+            count,
+        ) = ohlc_array
 
         # Convert Unix timestamp to datetime
         interval_begin = datetime.fromtimestamp(int(time_unix), tz=timezone.utc)
@@ -120,10 +131,7 @@ class KrakenBackfillClient:
         )
 
     async def get_ohlc_data(
-        self,
-        symbol: str,
-        since: Optional[int] = None,
-        limit: Optional[int] = None
+        self, symbol: str, since: Optional[int] = None, limit: Optional[int] = None
     ) -> List[OHLCData]:
         """
         Get OHLC data for a single symbol
@@ -140,7 +148,9 @@ class KrakenBackfillClient:
             Exception: If symbol not supported or API request fails
         """
         if symbol not in self.SYMBOL_MAP:
-            raise Exception(f"Symbol {symbol} not supported. Supported symbols: {list(self.SYMBOL_MAP.keys())}")
+            raise Exception(
+                f"Symbol {symbol} not supported. Supported symbols: {list(self.SYMBOL_MAP.keys())}"
+            )
 
         kraken_symbol = self.SYMBOL_MAP[symbol]
 
@@ -154,7 +164,9 @@ class KrakenBackfillClient:
 
         logger.info(f"Fetching OHLC data for {symbol} (Kraken: {kraken_symbol})")
         if since:
-            logger.info(f"Since timestamp: {since} ({datetime.fromtimestamp(since, tz=timezone.utc)})")
+            logger.info(
+                f"Since timestamp: {since} ({datetime.fromtimestamp(since, tz=timezone.utc)})"
+            )
 
         try:
             response = await self._make_request("OHLC", params)
@@ -194,8 +206,12 @@ class KrakenBackfillClient:
             if ohlc_data:
                 last_timestamp = result.get("last")
                 if last_timestamp:
-                    last_time = datetime.fromtimestamp(int(last_timestamp), tz=timezone.utc)
-                    logger.info(f"Last available timestamp: {last_timestamp} ({last_time})")
+                    last_time = datetime.fromtimestamp(
+                        int(last_timestamp), tz=timezone.utc
+                    )
+                    logger.info(
+                        f"Last available timestamp: {last_timestamp} ({last_time})"
+                    )
 
             return ohlc_data
 
@@ -207,7 +223,7 @@ class KrakenBackfillClient:
         self,
         symbols: List[str],
         since: Optional[int] = None,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
     ) -> Dict[str, List[OHLCData]]:
         """
         Backfill OHLC data for multiple symbols
@@ -231,15 +247,14 @@ class KrakenBackfillClient:
                 results[symbol] = []
 
         total_records = sum(len(data) for data in results.values())
-        logger.info(f"Backfill completed: {total_records} total records across {len(symbols)} symbols")
+        logger.info(
+            f"Backfill completed: {total_records} total records across {len(symbols)} symbols"
+        )
 
         return results
 
     async def backfill_since_timestamp(
-        self,
-        symbols: List[str],
-        since_timestamp: int,
-        batch_size: int = 720
+        self, symbols: List[str], since_timestamp: int, batch_size: int = 720
     ) -> Dict[str, List[OHLCData]]:
         """
         Backfill data since a specific timestamp, handling pagination if needed
@@ -263,7 +278,9 @@ class KrakenBackfillClient:
             while True:
                 try:
                     # Get batch of data
-                    batch_data = await self.get_ohlc_data(symbol, current_since, batch_size)
+                    batch_data = await self.get_ohlc_data(
+                        symbol, current_since, batch_size
+                    )
 
                     if not batch_data:
                         logger.info(f"No more data available for {symbol}")
@@ -280,14 +297,18 @@ class KrakenBackfillClient:
                     last_timestamp = int(batch_data[-1].interval_begin.timestamp())
                     current_since = last_timestamp + 1
 
-                    logger.info(f"Retrieved {len(batch_data)} records for {symbol}, continuing from {current_since}")
+                    logger.info(
+                        f"Retrieved {len(batch_data)} records for {symbol}, continuing from {current_since}"
+                    )
 
                 except Exception as e:
                     logger.error(f"Error during backfill for {symbol}: {e}")
                     break
 
             all_results[symbol] = all_data
-            logger.info(f"Completed backfill for {symbol}: {len(all_data)} total records")
+            logger.info(
+                f"Completed backfill for {symbol}: {len(all_data)} total records"
+            )
 
         return all_results
 

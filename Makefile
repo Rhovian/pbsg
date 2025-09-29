@@ -42,8 +42,8 @@ check: lint
 
 # Dashboard
 dash:
-	@echo "🚀 Starting Dash dashboard..."
-	PYTHONPATH=. $(UV_RUN) python -c "from src.services.dash_service import DashService; DashService(debug=True).run()"
+	@echo "🚀 Starting Dash dashboard with database connectivity..."
+	$(PYTHON_SCRIPT)/run_dashboard.py
 
 # Backfill historical data
 backfill:
