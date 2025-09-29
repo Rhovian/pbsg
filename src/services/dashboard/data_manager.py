@@ -392,16 +392,18 @@ class DataManager:
 
                 data = []
                 for row in result:
-                    data.append({
-                        "symbol": row.symbol,
-                        "timestamp": row.time.isoformat(),
-                        "open": float(row.open),
-                        "high": float(row.high),
-                        "low": float(row.low),
-                        "close": float(row.close),
-                        "volume": float(row.volume),
-                        "trades": row.trades,
-                    })
+                    data.append(
+                        {
+                            "symbol": row.symbol,
+                            "timestamp": row.time.isoformat(),
+                            "open": float(row.open),
+                            "high": float(row.high),
+                            "low": float(row.low),
+                            "close": float(row.close),
+                            "volume": float(row.volume),
+                            "trades": row.trades,
+                        }
+                    )
 
                 # Reverse to get chronological order (oldest first)
                 data.reverse()

@@ -196,8 +196,8 @@ class DashboardService:
                                         "border": "none",
                                         "border-radius": "5px",
                                         "cursor": "pointer",
-                                        "margin-top": "20px"
-                                    }
+                                        "margin-top": "20px",
+                                    },
                                 ),
                             ],
                             className="control-group",
@@ -208,13 +208,21 @@ class DashboardService:
                 # Progress bar for loading historical data
                 html.Div(
                     [
-                        dcc.Store(id="all-ohlc-data", data=[]),  # Store for all loaded data
-                        dcc.Store(id="loading-progress", data={"current": 0, "total": 0, "loading": False}),
+                        dcc.Store(
+                            id="all-ohlc-data", data=[]
+                        ),  # Store for all loaded data
+                        dcc.Store(
+                            id="loading-progress",
+                            data={"current": 0, "total": 0, "loading": False},
+                        ),
                         html.Div(
                             id="progress-container",
                             style={"display": "none"},
                             children=[
-                                html.H4("Loading Historical Data...", style={"margin": "10px 0"}),
+                                html.H4(
+                                    "Loading Historical Data...",
+                                    style={"margin": "10px 0"},
+                                ),
                                 html.Div(
                                     [
                                         html.Div(
@@ -224,8 +232,8 @@ class DashboardService:
                                                 "height": "20px",
                                                 "background": "#667eea",
                                                 "border-radius": "10px",
-                                                "transition": "width 0.3s ease"
-                                            }
+                                                "transition": "width 0.3s ease",
+                                            },
                                         )
                                     ],
                                     style={
@@ -233,12 +241,14 @@ class DashboardService:
                                         "height": "20px",
                                         "background": "#2d2d2d",
                                         "border-radius": "10px",
-                                        "margin": "10px 0"
-                                    }
+                                        "margin": "10px 0",
+                                    },
                                 ),
-                                html.Div(id="progress-text", style={"text-align": "center"})
-                            ]
-                        )
+                                html.Div(
+                                    id="progress-text", style={"text-align": "center"}
+                                ),
+                            ],
+                        ),
                     ]
                 ),
                 # Statistics cards
@@ -298,7 +308,9 @@ class DashboardService:
 
             try:
                 # Use stored data if available and symbol matches, otherwise fetch fresh data
-                symbol_changed = not stored_data or (stored_data and stored_data[0].get("symbol") != selected_symbol)
+                symbol_changed = not stored_data or (
+                    stored_data and stored_data[0].get("symbol") != selected_symbol
+                )
 
                 if symbol_changed or not stored_data:
                     # Get initial OHLC data (5000 records)
@@ -373,13 +385,17 @@ class DashboardService:
             current_records = len(current_data) if current_data else 0
 
             if current_records >= total_records:
-                return {"current": total_records, "total": total_records, "loading": False}, {"display": "none"}
+                return {
+                    "current": total_records,
+                    "total": total_records,
+                    "loading": False,
+                }, {"display": "none"}
 
             # Start loading
             return {
                 "current": current_records,
                 "total": total_records,
-                "loading": True
+                "loading": True,
             }, {"display": "block"}
 
         @self.app.callback(
@@ -395,26 +411,34 @@ class DashboardService:
         def update_progressive_loading(progress_data, selected_symbol, current_data):
             """Handle progressive data loading"""
             if not progress_data.get("loading") or not selected_symbol:
-                return {
-                    "width": "0%",
-                    "height": "20px",
-                    "background": "#667eea",
-                    "border-radius": "10px",
-                    "transition": "width 0.3s ease"
-                }, "", current_data or []
+                return (
+                    {
+                        "width": "0%",
+                        "height": "20px",
+                        "background": "#667eea",
+                        "border-radius": "10px",
+                        "transition": "width 0.3s ease",
+                    },
+                    "",
+                    current_data or [],
+                )
 
             current = progress_data["current"]
             total = progress_data["total"]
 
             if current >= total:
                 # Loading complete
-                return {
-                    "width": "100%",
-                    "height": "20px",
-                    "background": "#00D4AA",
-                    "border-radius": "10px",
-                    "transition": "width 0.3s ease"
-                }, f"Complete! Loaded {total:,} records", current_data or []
+                return (
+                    {
+                        "width": "100%",
+                        "height": "20px",
+                        "background": "#00D4AA",
+                        "border-radius": "10px",
+                        "transition": "width 0.3s ease",
+                    },
+                    f"Complete! Loaded {total:,} records",
+                    current_data or [],
+                )
 
             # Load next chunk
             chunk_size = 5000
@@ -422,9 +446,7 @@ class DashboardService:
 
             try:
                 chunk_data = self.data_manager.get_ohlc_data_chunk(
-                    symbol=selected_symbol,
-                    offset=offset,
-                    limit=chunk_size
+                    symbol=selected_symbol, offset=offset, limit=chunk_size
                 )
 
                 # Merge with existing data (ensure chronological order)
@@ -434,23 +456,31 @@ class DashboardService:
 
                 progress_percent = min((current + len(chunk_data)) / total * 100, 100)
 
-                return {
-                    "width": f"{progress_percent}%",
-                    "height": "20px",
-                    "background": "#667eea",
-                    "border-radius": "10px",
-                    "transition": "width 0.3s ease"
-                }, f"Loading... {current + len(chunk_data):,} of {total:,} records ({progress_percent:.1f}%)", all_data
+                return (
+                    {
+                        "width": f"{progress_percent}%",
+                        "height": "20px",
+                        "background": "#667eea",
+                        "border-radius": "10px",
+                        "transition": "width 0.3s ease",
+                    },
+                    f"Loading... {current + len(chunk_data):,} of {total:,} records ({progress_percent:.1f}%)",
+                    all_data,
+                )
 
             except Exception as e:
                 logger.error(f"Error in progressive loading: {e}")
-                return {
-                    "width": f"{current/total*100}%",
-                    "height": "20px",
-                    "background": "#FF6B6B",
-                    "border-radius": "10px",
-                    "transition": "width 0.3s ease"
-                }, f"Error loading data: {str(e)}", current_data or []
+                return (
+                    {
+                        "width": f"{current / total * 100}%",
+                        "height": "20px",
+                        "background": "#FF6B6B",
+                        "border-radius": "10px",
+                        "transition": "width 0.3s ease",
+                    },
+                    f"Error loading data: {str(e)}",
+                    current_data or [],
+                )
 
     def run(self, host: str = "127.0.0.1", port: int = 8050) -> None:
         """Run the Dash application"""

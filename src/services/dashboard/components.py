@@ -89,11 +89,13 @@ class ChartComponents:
 
             # Disable some features for very large datasets to improve performance
             if len(optimized_data) > 50000:
-                layout_config.update({
-                    "xaxis": {"showspikes": False},
-                    "yaxis": {"showspikes": False},
-                    "hovermode": False,
-                })
+                layout_config.update(
+                    {
+                        "xaxis": {"showspikes": False},
+                        "yaxis": {"showspikes": False},
+                        "hovermode": False,
+                    }
+                )
 
             fig.update_layout(**layout_config)
 
@@ -130,12 +132,10 @@ class ChartComponents:
 
             fig = go.Figure()
 
-            # Use WebGL for large datasets
-            use_webgl = len(optimized_data) > 10000
-            trace_class = go.Bar  # Bar charts don't have WebGL equivalent, but optimize differently
+            # Bar charts don't have WebGL equivalent, but we still optimize the layout
 
             fig.add_trace(
-                trace_class(
+                go.Bar(
                     x=timestamps,
                     y=volumes,
                     name="Volume",
@@ -157,11 +157,13 @@ class ChartComponents:
 
             # Disable some features for very large datasets
             if len(optimized_data) > 50000:
-                layout_config.update({
-                    "xaxis": {"showspikes": False},
-                    "yaxis": {"showspikes": False},
-                    "hovermode": False,
-                })
+                layout_config.update(
+                    {
+                        "xaxis": {"showspikes": False},
+                        "yaxis": {"showspikes": False},
+                        "hovermode": False,
+                    }
+                )
 
             fig.update_layout(**layout_config)
 
